@@ -25,4 +25,4 @@
 - [x] Integrazione WKWebView su macOS e salvataggio da YouTube reale verificati.
 - [x] Typecheck dei rami UIKit tramite Mac Catalyst e compilazione dei rami macOS.
 - [x] Progetto Xcode, test UI e script per il simulatore preparati.
-- [ ] Build iOS, XCUITest nel simulatore, playback e login: bloccati dall’assenza di Xcode completo. Dettagli in TEST-REPORT.md.
+- [ ] Build iOS, XCUITest nel simulatore, playback e login: bloccati dal primo avvio di Xcode: versione 27.2 installata, licenza ancora da accettare. Dettagli in TEST-REPORT.md.

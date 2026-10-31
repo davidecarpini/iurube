@@ -4,7 +4,7 @@
 
 ## Stato
 
-Implementazione completata nel progetto Xcode. **Compilazione iOS e test nel simulatore non eseguiti**, perché manca Xcode completo e non è stato possibile installarlo con le autorizzazioni disponibili. Il progetto non va descritto come già collaudato su iPhone.
+Implementazione completata nel progetto Xcode. Xcode 27.2 (27B52) è ora installato. **Compilazione iOS e test nel simulatore non eseguiti**: il primo avvio è bloccato dalla licenza Xcode/Apple SDK non ancora accettata. Il progetto non va descritto come già collaudato su iPhone.
 
 ## Implementato
 
@@ -49,17 +49,22 @@ Nel test WebKit live:
 
 Le fixture non inseriscono dati nella lista personale. Screenshot e log di sviluppo sono sotto `work/`, esclusi da Git.
 
-## Blocco del simulatore
+## Blocco attuale del simulatore
 
-- `xcode-select -p` restituisce `/Library/Developer/CommandLineTools`.
-- `xcodebuild` richiede Xcode completo; `simctl` non è disponibile.
-- Il download diretto ufficiale di Xcode reindirizza alla pagina Apple di accesso non autorizzato.
-- L’installazione tramite il client App Store richiede privilegi amministratore; `sudo -n` segnala che serve la password.
-- Computer Use non è stato autorizzato a usare App Store. L’apertura del sito Apple nel browser è stata negata dal controllo di autorizzazione. Non sono stati aggirati questi blocchi e non sono state cercate o usate credenziali.
+Controllo automatico del 31 ottobre 2026, ore 15:16 (Europe/Rome):
+
+- Xcode 27.2, build 27B52, è installato in /Applications/Xcode.app.
+- xcodebuild -checkFirstLaunchStatus termina con codice 69.
+- xcodebuild -runFirstLaunch termina con codice 77: «You have not agreed to the Xcode license agreements».
+- Occorre aprire Xcode, esaminare e accettare la licenza e completare l’installazione iniziale dei componenti. Questo passaggio richiede l’intervento dell’utente.
+- Nessuna licenza è stata accettata automaticamente. Nessun test nel simulatore è stato avviato in questo controllo.
+- Il monitor del download è stato rimosso dopo questa notifica, perché il download è terminato e ora serve un’azione dell’utente.
+
+Il precedente impedimento al download è superato: l’utente ha installato Xcode tramite App Store.
 
 ## Completare la verifica iPhone
 
-Installare Xcode dall’App Store e completare il primo avvio. Poi:
+Aprire Xcode già installato e completare il primo avvio (licenza e componenti). Poi:
 
 ```sh
 cd /Users/davidecarpini/apps/iurub
