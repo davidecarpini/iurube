@@ -4,65 +4,74 @@ struct MainView: View {
     @EnvironmentObject private var settings: AppSettings
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var watchLater = BrowserSession(startPage: .watchLater, saveDestination: .youtube)
+    @StateObject private var subscriptions = BrowserSession(startPage: .subscriptions, saveDestination: .youtube)
+    @StateObject private var history = BrowserSession(startPage: .history, saveDestination: .youtube)
     @StateObject private var home = BrowserSession(saveDestination: .youtube)
     @State private var selectedTab = 0
     @State private var showingSettings = false
 
+    private var sessions: [BrowserSession] { [watchLater, subscriptions, history, home] }
+
     var body: some View {
         TabView(selection: $selectedTab) {
-            browserTab(watchLater, title: "Guarda più tardi", icon: "bookmark.fill")
-                .tabItem { Label("Guarda più tardi", systemImage: "bookmark.fill") }
-                .tag(0)
-            browserTab(home, title: "Home", icon: "house")
-                .tabItem { Label("Home", systemImage: "house.fill") }
-                .tag(1)
+            browserTab(watchLater)
+                .tabItem { Label("Salvati", systemImage: "bookmark.fill") }.tag(0)
+            browserTab(subscriptions)
+                .tabItem { Label("Iscrizioni", systemImage: "play.rectangle.on.rectangle") }.tag(1)
+            browserTab(history)
+                .tabItem { Label("Cronologia", systemImage: "clock.arrow.circlepath") }.tag(2)
+            browserTab(home)
+                .tabItem { Label("Esplora", systemImage: "safari") }.tag(3)
         }
         .sheet(isPresented: $showingSettings) { SettingsView() }
         .onAppear { watchLater.startIfNeeded() }
         .onReceive(settings.$shortsEnabled) { enabled in
-            for session in [watchLater, home] { session.configure(shortsEnabled: enabled, savedIDs: []) }
+            for session in sessions { session.configure(shortsEnabled: enabled, savedIDs: []) }
         }
         .onChange(of: selectedTab) { _, tab in
-            if tab == 0 {
-                home.pause()
-                watchLater.openStartPage()
-            } else {
-                watchLater.pause()
-                home.startIfNeeded()
-            }
+            for (index, session) in sessions.enumerated() where index != tab { session.pause() }
+            if tab == 0 || tab == 2 { sessions[tab].openStartPage() }
+            else { sessions[tab].startIfNeeded() }
         }
-        .onChange(of: showingSettings) { _, showing in if showing { pauseBoth() } }
-        .onChange(of: scenePhase) { _, phase in if phase != .active { pauseBoth() } }
+        .onChange(of: showingSettings) { _, showing in if showing { pauseAll() } }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { pauseAll() } }
         .onOpenURL { url in
             guard url.scheme == "iurub", url.host == "open",
                   let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "url" })?.value,
                   let link = VideoLink.parse(raw) else { return }
-            selectedTab = 1
+            selectedTab = 3
             home.load(link.url)
         }
     }
 
-    private func browserTab(_ session: BrowserSession, title: String, icon: String) -> some View {
+    private func browserTab(_ session: BrowserSession) -> some View {
         NavigationStack {
-            BrowserPane(session: session)
+            BrowserPane(session: session, extendsToBottom: true)
                 .toolbar {
                     ToolbarItem(placement: .principal) { BrandMark() }
-                    ToolbarItem(placement: .appLeading) {
-                        Button(action: session.back) { Image(systemName: "chevron.left").frame(width: 32, height: 32) }
+                    ToolbarItemGroup(placement: .appLeading) {
+                        Button(action: session.back) { Image(systemName: "chevron.left").frame(width: 28, height: 32) }
                             .disabled(!session.canGoBack).accessibilityLabel("Indietro")
+                            .accessibilityIdentifier("backButton")
+                        Button(action: session.reload) { Image(systemName: "arrow.clockwise").frame(width: 28, height: 32) }
+                            .accessibilityLabel("Ricarica pagina")
+                            .accessibilityIdentifier("refreshPage")
                     }
                     ToolbarItemGroup(placement: .primaryAction) {
-                        Button(action: session.openStartPage) { Image(systemName: icon).frame(width: 32, height: 32) }
-                            .accessibilityLabel(title == "Home" ? "Torna alla home YouTube" : "Aggiorna Guarda più tardi")
-                            .accessibilityIdentifier(title == "Home" ? "youtubeHome" : "refreshWatchLater")
                         SettingsButton { showingSettings = true }
+                        Button(action: session.openAccount) { Image(systemName: "person.crop.circle").frame(width: 28, height: 32) }
+                            .accessibilityLabel("Tu")
+                            .accessibilityIdentifier("profileButton")
                     }
                 }
                 .inlineTitle()
+                #if os(iOS)
+                .toolbarBackground(.hidden, for: .tabBar)
+                #endif
         }
     }
 
-    private func pauseBoth() { watchLater.pause(); home.pause() }
+    private func pauseAll() { sessions.forEach { $0.pause() } }
 }
 
 // Preserve the original on-device library without presenting it as the Google playlist.

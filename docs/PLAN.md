@@ -21,3 +21,11 @@ Aggiornato il 1 novembre 2026 dopo la verifica con l’account YouTube dell’ut
 - Fixture disponibili solo in Debug con argomenti espliciti; archivio WebKit non persistente e dati di test separati.
 
 Esiti effettivi e limiti in `TEST-REPORT.md`.
+
+## Aggiornamento navigazione — 1 novembre 2026
+
+1. Sostituire le due tab con Salvati, Iscrizioni, Cronologia, Esplora, conservando sessioni separate e lo stesso login WebKit.
+2. Nascondere la navigazione inferiore interna di YouTube, anche dopo aggiornamenti dinamici o abilitazione degli Shorts.
+3. Togliere il segnalibro/Home dalla barra superiore; aggiungere refresh vicino a Indietro e Tu a destra delle impostazioni.
+4. Estendere la webview dietro la barra inferiore nativa, fino al bordo dello schermo.
+5. Verificare geometria e navigazione con fixture isolate e con il sito reale; aggiornare simulatore e iPhone collegato.

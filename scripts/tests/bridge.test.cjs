@@ -301,3 +301,20 @@ test('removal clicks the nested YouTube button rather than its noninteractive re
     assert.equal(removals, 1);
   } finally { dom.window.close(); }
 });
+
+test('hides the entire YouTube bottom navigation, including after dynamic updates and enabling Shorts', async () => {
+  const { dom, d, w } = await setup();
+  try {
+    const bar = d.querySelector('ytm-pivot-bar-renderer');
+    assert.equal(w.getComputedStyle(bar).display, 'none');
+    w.iurub.configure({shortsEnabled:true, savedIDs:[]});
+    await wait();
+    assert.equal(w.getComputedStyle(bar).display, 'none');
+    assert.notEqual(w.getComputedStyle(d.querySelector('#short-shelf')).display, 'none');
+    bar.remove();
+    d.body.insertAdjacentHTML('beforeend','<ytm-pivot-bar-renderer><button>Tu</button></ytm-pivot-bar-renderer><button id="page-action">Home del canale</button>');
+    await wait();
+    assert.equal(w.getComputedStyle(d.querySelector('ytm-pivot-bar-renderer')).display, 'none');
+    assert.notEqual(w.getComputedStyle(d.getElementById('page-action')).display, 'none');
+  } finally { dom.window.close(); }
+});

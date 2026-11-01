@@ -6,9 +6,19 @@ import WebKit
 @MainActor
 final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
     enum SaveDestination: String { case device, youtube }
-    enum StartPage: String {
-        case home, watchLater
-        var url: URL { URL(string: self == .watchLater ? "https://m.youtube.com/playlist?list=WL" : "https://m.youtube.com/")! }
+    enum StartPage: String, CaseIterable {
+        case home, watchLater, subscriptions, history, you
+        var url: URL {
+            let path: String
+            switch self {
+            case .home: path = "/"
+            case .watchLater: path = "/playlist?list=WL"
+            case .subscriptions: path = "/feed/subscriptions"
+            case .history: path = "/feed/history"
+            case .you: path = "/feed/library"
+            }
+            return URL(string: "https://m.youtube.com" + path)!
+        }
     }
     let saveDestination: SaveDestination
     let startPage: StartPage
@@ -125,6 +135,17 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     func home() { load(URL(string: "https://m.youtube.com/")!) }
 
+    func openAccount() {
+        pause()
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--fixture") {
+            webView.evaluateJavaScript("window.fixtureNavigate?.('you');", completionHandler: nil)
+            return
+        }
+        #endif
+        load(StartPage.you.url)
+    }
+
     func load(_ url: URL) {
         guard url.scheme == "https", let host = url.host, VideoLink.isYouTubeHost(host) else { return }
         if !shortsEnabled && Self.isShortURL(url) {
@@ -142,7 +163,11 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     func reload() {
         loadError = nil
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--fixture") { loadFixture(); return }
+        if ProcessInfo.processInfo.arguments.contains("--fixture") {
+            let page = StartPage.allCases.first { $0.url == webView.url } ?? startPage
+            loadFixture(page: page)
+            return
+        }
         #endif
         if webView.url == nil { load(lastURL) } else { webView.reload() }
     }
@@ -278,14 +303,15 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     #if DEBUG
-    private func loadFixture() {
+    private func loadFixture(page requestedPage: StartPage? = nil) {
+        let page = requestedPage ?? startPage
         guard let url = Bundle.main.url(forResource: "YouTubeFixture", withExtension: "html"),
               var html = try? String(contentsOf: url, encoding: .utf8) else { return }
         let ids = UserDefaults(suiteName: "it.davidecarpini.iurub.uitests")!.stringArray(forKey: "fixtureAccountIDs") ?? ["M7lc1UVf-VE"]
         let data = try! JSONSerialization.data(withJSONObject: ids)
-        html = html.replacingOccurrences(of: "/*IURUB_FIXTURE_ACCOUNT*/", with: "window.fixtureAccountIDs = \(String(decoding: data, as: UTF8.self)); window.fixtureStartPage = '\(startPage.rawValue)';")
+        html = html.replacingOccurrences(of: "/*IURUB_FIXTURE_ACCOUNT*/", with: "window.fixtureAccountIDs = \(String(decoding: data, as: UTF8.self)); window.fixtureStartPage = '\(page.rawValue)';")
         hasLoaded = true
-        webView.loadHTMLString(html, baseURL: URL(string: "https://m.youtube.com/"))
+        webView.loadHTMLString(html, baseURL: page.url)
     }
     #endif
 }

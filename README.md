@@ -2,14 +2,20 @@
 
 Client personale per iPhone, SwiftUI + WKWebView, iOS 17+. Nessun backend e nessuna chiave API.
 
-## Le due tab
+## Navigazione
 
-- **Guarda più tardi**, a sinistra e all’avvio: la vera playlist privata dell’account YouTube con cui hai effettuato l’accesso. Si aggiorna quando torni dalla Home; il pulsante segnalibro in alto permette di ricaricarla.
-- **Home**, a destra: sito mobile YouTube, con pulsante **+ Guarda più tardi** sulle schede. Il pulsante richiama il menu di YouTube e la playlist dell’account.
-- Ogni video nella playlist ha un pulsante **Rimuovi**. La rimozione viene eseguita da YouTube; il suo comando **Annulla**, quando disponibile, rimane utilizzabile.
-- Nelle **Impostazioni** puoi abilitare gli Shorts, nascosti inizialmente. La preferenza è persistente e si applica a entrambe le tab.
+La barra inferiore ha quattro tab, in questo ordine:
 
-Home e playlist condividono lo stesso archivio WebKit di cookie e sessione. Accedendo a YouTube nell’app, anche la prima tab usa quell’account. Le modifiche riguardano la playlist YouTube, visibile anche sugli altri dispositivi dello stesso account. Se non hai effettuato l’accesso, YouTube mostra la sua schermata di login.
+- **Salvati**: Guarda più tardi del tuo account YouTube, aperto all’avvio e aggiornato quando torni alla tab.
+- **Iscrizioni**: i video dei canali a cui sei iscritto.
+- **Cronologia**: la cronologia YouTube dell’account, aggiornata quando riapri la tab.
+- **Esplora**: la normale Home di YouTube, con **+ Guarda più tardi** sulle schede.
+
+La barra inferiore del sito (Home, Iscrizioni, Tu) è nascosta. La webview si estende fino al bordo inferiore, dietro la barra dell’app. In alto trovi **Indietro e Ricarica pagina** a sinistra, **Impostazioni e Tu** a destra. Tu apre la pagina personale nella sezione corrente; Indietro torna alla pagina precedente. Ricarica aggiorna la pagina che stai guardando.
+
+Ogni video nella playlist ha **Rimuovi**. La rimozione viene eseguita da YouTube; il suo comando **Annulla**, quando disponibile, rimane utilizzabile. Nelle impostazioni puoi abilitare gli Shorts, nascosti inizialmente, per tutte le sezioni.
+
+Tutte le sezioni condividono lo stesso archivio WebKit di cookie e sessione. Accedendo a YouTube nell’app, anche le altre pagine usano quell’account. Le modifiche alla playlist compaiono sugli altri dispositivi collegati allo stesso account. Se non hai effettuato l’accesso, YouTube mostra la sua schermata di login.
 
 L’**archivio locale della versione precedente** è conservato in Impostazioni → Salvati sul dispositivo. Puoi ancora aggiungere link, cercare, riprodurre e rimuovere con annullamento. Questi link restano separati dalla playlist YouTube e non vengono trasferiti automaticamente.
 
@@ -34,9 +40,9 @@ npm test
 ./scripts/simulator.sh live
 ```
 
-La suite ripetibile usa fixture, una lista locale di prova e un archivio WebKit non persistente: non legge né modifica l’account Google reale. Simula una playlist già popolata, salvataggio nel conto di prova, riavvio, rimozione, annullamento e toggle Shorts.
+La suite ripetibile usa fixture, una lista locale di prova e un archivio WebKit non persistente: non legge né modifica l’account Google reale. Simula una playlist già popolata, salvataggio nel conto di prova, riavvio, rimozione, annullamento, toggle Shorts e le quattro sezioni. Verifica anche ordine e posizione dei controlli, refresh e dimensioni della webview.
 
-Il comando `live` richiede una sessione YouTube già autenticata. È una verifica in sola lettura della playlist, della presenza dei controlli e della navigazione fra le tab; non cancella o aggiunge video reali. I risultati e le immagini sono allegati ai file `build/*.xcresult`.
+Il comando `live` richiede una sessione YouTube già autenticata. È una verifica in sola lettura della playlist, della presenza dei controlli, delle quattro sezioni e del percorso Tu → Indietro; non cancella o aggiunge video reali. I risultati e le immagini sono allegati ai file `build/*.xcresult`.
 
 Le fixture sono disponibili solo nelle build Debug con argomenti espliciti. L’avvio normale mostra il sito reale. `scripts/test-webkit.sh` conserva i controlli precedenti del bridge locale su macOS.
 

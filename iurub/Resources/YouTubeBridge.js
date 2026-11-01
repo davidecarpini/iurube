@@ -60,6 +60,8 @@
     const style = document.createElement('style');
     style.id = 'iurub-style';
     style.textContent = `
+      ytm-pivot-bar-renderer, .pivot-bar-renderer { display:none !important; }
+      ytm-app { padding-bottom:0 !important; }
       html.iurub-no-shorts ${SHORT_SHELF.split(',').join(',html.iurub-no-shorts ')} { display:none !important; }
       html.iurub-no-shorts a[href^="/shorts/"], html.iurub-no-shorts a[href*="youtube.com/shorts/"] { display:none !important; }
       .iurub-save { box-sizing:border-box; display:flex; align-items:center; justify-content:center; gap:6px; min-height:44px; margin:8px 12px 12px; padding:10px 14px; border:1px solid #e84a3838; border-radius:12px; background:#fff5f2; color:#aa3022; font:600 13px -apple-system,BlinkMacSystemFont,sans-serif; cursor:pointer; position:relative; z-index:2; -webkit-tap-highlight-color:transparent; }

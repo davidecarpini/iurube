@@ -7,6 +7,7 @@ struct BrowserPane: View {
     @ObservedObject var session: BrowserSession
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: AppSettings
+    var extendsToBottom = false
     var onSave: ((SavedVideo) -> Void)? = nil
     @State private var feedback: String?
     @State private var safariURL: IdentifiedURL?
@@ -14,6 +15,7 @@ struct BrowserPane: View {
 
     var body: some View {
         YouTubeWebView(session: session)
+            .ignoresSafeArea(.container, edges: extendsToBottom ? .bottom : [])
             .overlay(alignment: .top) {
                 if session.isLoading { ProgressView().padding(10).background(.regularMaterial, in: Capsule()).padding(.top, 8) }
             }

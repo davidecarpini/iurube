@@ -1,44 +1,48 @@
-# iurub — verifica playlist account e rimozione rapida
+# iurub 1.1 — navigazione e verifica
 
-1 novembre 2026 · progetto `/Users/davidecarpini/apps/iurub`
+1 novembre 2026 · progetto `/Users/davidecarpini/apps/iurub` · versione **1.1.0, build 2**.
 
-## Correzione consegnata
+## Modifiche consegnate
 
-La prima tab mostra ora **Guarda più tardi dell’account YouTube** già autenticato nell’app. Home e playlist condividono la sessione WebKit; tornando dalla Home la playlist si aggiorna. La lista locale della versione precedente è conservata in **Impostazioni → Salvati sul dispositivo**.
+- Barra inferiore nativa con **Salvati, Iscrizioni, Cronologia, Esplora**, in quest’ordine.
+- La navigazione inferiore interna di YouTube (Home, Iscrizioni, Tu) è nascosta, anche quando gli Shorts vengono abilitati o il sito aggiorna le schede.
+- **Indietro e Ricarica pagina** in alto a sinistra; **Impostazioni e Tu** in alto a destra. Rimossa l’icona segnalibro/Home accanto alle impostazioni.
+- **Tu** apre la pagina personale YouTube nella sezione corrente. Il percorso mobile è `/feed/library`; Indietro torna alla pagina precedente.
+- La webview raggiunge il bordo inferiore dello schermo, dietro la barra nativa. Le acquisizioni reali mostrano il contenuto sotto la barra flottante.
+- Tutte le sezioni condividono lo stesso login. Salvati e Cronologia si aggiornano al ritorno nella rispettiva tab. Il refresh ricarica la pagina corrente.
+- Conservati salvataggio nell’account, Rimuovi, eventuale Annulla di YouTube, toggle Shorts e archivio locale precedente nelle impostazioni.
 
-Il pulsante **+ Guarda più tardi** della Home usa i menu del sito e seleziona la playlist dell’account. Gestisce sia i checkbox sia le voci selezionabili attualmente usate da YouTube mobile, senza deselezionare un video già presente. Se il menu non è riconosciuto, lascia disponibile il comando originale e indica come procedere.
+## Esiti finali
 
-Ogni riga della playlist ha un pulsante **Rimuovi**: un tocco richiama il comando di YouTube per quel video. Non viene rimossa una riga solo graficamente in anticipo. L’eventuale comando **Annulla** del sito rimane utilizzabile.
+Ambiente simulatore: **Xcode 27.2, iPhone Air, iOS 27.2**.
 
-## Risultati finali
-
-Ambiente: **Xcode 27.2 (27B52), iPhone Air, iOS 27.2 (24B8117)**.
-
-| Verifica | Esito | Ambito |
+| Verifica | Esito | Copertura |
 |---|---|---|
-| Debug iOS Simulator | Superata | Compilazione, installazione e avvio della versione aggiornata |
-| Release iPhone | Superata | Compilazione per iPhoneOS senza firma personale |
-| Swift Testing | **10/10** | Modello, URL, persistenza locale, errori e preferenze |
-| XCUITest con fixture | **3/3** | Playlist account iniziale, salvataggio, riavvio, rimozione/annullamento, archivio locale, Shorts |
-| JavaScript/jsdom | **20/20** | Menu reali riprodotti, selezione corretta, rimozione della riga corretta, fallback, schede dinamiche e filtri |
-| XCUITest YouTube live | **1/1** | Sessione già autenticata, playlist reale, pulsanti, menu e selezione esistente, passaggio fra le tab |
+| Swift Testing | **10/10** | URL, modello, persistenza, errori e preferenze |
+| XCUITest con fixture | **4/4** | Quattro tab, ordine, toolbar, refresh, Tu, frame webview, salvataggio/riavvio, rimozione/annullamento, archivio locale, Shorts |
+| XCUITest YouTube reale | **1/1** | Playlist autenticata, menu, Tu → Indietro, Iscrizioni, Cronologia, Esplora, ritorno a Salvati |
+| JavaScript/jsdom | **21/21** | Bridge, menu account, rimozione, filtri e assenza della barra YouTube dopo aggiornamenti dinamici |
+| Build Debug simulatore | **Superata** | App aggiornata installata e avviata |
+| Build Release firmata iPhone | **Superata** | Apple Development, team personale configurato |
+| Installazione e avvio iPhone fisico | **Superati** | iPhone di Davide, iPhone 16 Pro Max, iOS 26.6.1; inventario conferma 1.1.0 (2) |
 
-Totale delle due esecuzioni iOS: **14 test superati, 0 fallimenti, 0 saltati**. Nessun runtime warning segnalato nei riepiloghi Xcode.
+Totale iOS: **15 test superati, 0 fallimenti, 0 saltati** nelle esecuzioni finali. La verifica della geometria controlla che il bordo inferiore della WKWebView coincida con quello dello schermo. Gli screenshot confermano la rimozione della seconda barra e la disposizione dei nuovi controlli.
 
-- Suite iOS: `build/Tests-20261101-160425.xcresult`.
-- Test live: `build/Tests-20261101-160613.xcresult`.
-- Log JavaScript: `work/account-bridge-final.log`.
-- Build Release: `work/account-release-final.log`.
+Risultati:
 
-## Cosa è stato verificato
+- Suite iOS: `build/Tests-20261101-181020.xcresult`.
+- Test live: `build/Tests-20261101-180850.xcresult`.
+- JavaScript: `work/navigation-js.log`.
+- Build firmata: `work/navigation-iphone-build.log`.
+- Installazione, avvio e versione fisica: `work/navigation-iphone-install.json`, `work/navigation-iphone-launch.json`, `work/navigation-iphone-app.json`.
 
-La suite ripetibile parte da una playlist account simulata già popolata. Aggiunge un secondo video dalla Home, verifica che sia presente dopo il riavvio, lo rimuove con il nuovo pulsante, controlla che l’altro video rimanga e usa **Annulla** per ripristinarlo. Verifica anche che i salvataggi account non finiscano silenziosamente nell’archivio locale.
+## Isolamento dei test e limiti
 
-Il toggle Shorts è stato verificato spento inizialmente, abilitato, conservato dopo il riavvio e nuovamente disabilitato. L’archivio locale conserva aggiunta tramite link, validazione, rimozione e annullamento.
+I test che aggiungono o rimuovono video usano una playlist simulata e un archivio WebKit non persistente. La verifica live apre pagine e menu, senza aggiungere o togliere video dall’account. Il percorso Indietro dopo Tu è verificato sul sito reale, perché le pagine HTML iniettate della fixture non riproducono la cronologia nativa di navigazione di WKWebView.
 
-Sul sito reale è stata verificata la playlist dell’account presente nel simulatore. Sono stati aperti il menu originale della prima riga e il selettore delle playlist, senza attivare le opzioni di aggiunta o rimozione. I controlli osservati sono stati usati per aggiornare i selettori del bridge. **La cancellazione e l’annullamento completi sono stati collaudati sulla fixture, non sui video personali.**
+L’aggiornamento sull’iPhone è stato installato sopra la versione esistente, senza disinstallazione o cancellazione dei dati. La sessione del simulatore rimane separata da quella del telefono. È stata verificata l’installazione e l’apertura fisica; la suite funzionale completa è stata eseguita nel simulatore.
 
-Le fixture usano un archivio WebKit non persistente e dati di prova separati. La sessione personale è stata mantenuta durante gli aggiornamenti dell’app. I controlli diagnostici temporanei sono stati rimossi dai sorgenti finali.
+Il player reale era stato verificato in precedenza; la riproduzione non è stata ricollaudata in questo aggiornamento di navigazione. Fullscreen, rotazione, PiP e AirPlay restano fuori dal collaudo. Menu, conferme, disponibilità di Annulla e filtri dipendono dal sito YouTube. Nessuna pubblicazione su App Store.
 
 ## Ripetere i controlli
 
@@ -51,30 +55,15 @@ npm test
 ./scripts/simulator.sh run
 ```
 
-`test` usa fixture isolate. `live` richiede una sessione YouTube autenticata e la playlist popolata, ed esegue il controllo dei menu in italiano in sola lettura. `run` compila, installa e apre l’app normale. I risultati Xcode includono allegati acquisiti dal simulatore.
+`live` richiede la sessione YouTube già autenticata, una playlist popolata e il sito in italiano. Per aggiornare l’iPhone collegato, selezionalo come destinazione in Xcode e premi Run.
 
 ## Deliverable
 
-- `iurub-sorgenti.zip`: sorgenti aggiornati, progetto Xcode, test, script e documentazione.
-- `Avvia-iurub.command` e `LEGGIMI.txt`: avvio sul Mac e istruzioni.
-- `iurub-rimozione-rapida.png`, `iurub-guarda-piu-tardi.png`, `iurub-avvio.png`: app aggiornata, vera playlist e pulsante Rimuovi.
-- `iurub-impostazioni.png`: impostazioni attuali, Shorts abilitati nella fixture di test.
-- `iurub-test-ios.json`, `iurub-test-live.json`: riepiloghi originali esportati da Xcode.
-- `iurub-test-javascript.txt`: output dei 20 test JavaScript.
-- `storico/iurub-youtube.png` e `storico/iurub-riproduzione.png`: acquisizioni del collaudo precedente, conservate come riferimento.
-
-## Limiti della verifica
-
-Il player reale aveva superato il collaudo precedente con avanzamento della riproduzione; quel test non è stato ripetuto in questa correzione. Il login è stato effettuato dall’utente: è stato verificato il riuso della sessione, non il flusso di autenticazione con credenziali.
-
-Menu, filtri, conferme e disponibilità di Annulla dipendono dal sito YouTube e possono richiedere manutenzione quando cambia. Fullscreen/rotazione e PiP/AirPlay non sono stati verificati. Nessuna pubblicazione su App Store è stata effettuata.
-
-## Installazione su iPhone fisico — 1 novembre 2026
-
-**iurub 1.0.0 (build 1) è stata installata e avviata su “iPhone di Davide”, iPhone 16 Pro Max con iOS 26.6.1.**
-
-Il progetto è configurato per il Personal Team di Davide Carpini. La build Release è stata firmata con Apple Development; installazione, inventario delle app sul dispositivo e comando di avvio hanno confermato il successo. Non sono stati revocati certificati esistenti.
-
-Il profilo incorporato riporta scadenza **1 novembre 2027, ore 16:19 Europe/Rome**. La sessione YouTube del simulatore non viene trasferita sul telefono: l’accesso va effettuato nell’app sul dispositivo. L’installazione e l’avvio fisico sono verificati; i test funzionali completi restano quelli eseguiti nel simulatore.
-
-Log locali: `work/iphone-install-build-retry.log`, `work/iphone-install-result.json`, `work/iphone-launch-result.json` e `work/iphone-installed-app.json`.
+- `iurub-sorgenti.zip`: sorgenti, progetto Xcode, test, script e documentazione aggiornati.
+- `iurub-navigazione.png`: Salvati con le quattro tab e la pagina dietro la barra.
+- `iurub-tu.png`, `iurub-iscrizioni.png`, `iurub-cronologia.png`, `iurub-esplora.png`: le nuove sezioni sul sito reale.
+- `iurub-impostazioni.png`: impostazioni aggiornate, Shorts abilitati nella fixture.
+- `iurub-avvio.png`, `iurub-guarda-piu-tardi.png`, `iurub-rimozione-rapida.png`: aggiornati alla nuova navigazione.
+- `iurub-test-ios.json`, `iurub-test-live.json`, `iurub-test-javascript.txt`: esiti originali dei controlli.
+- `Avvia-iurub.command` e `LEGGIMI.txt`: avvio locale e istruzioni.
+- `storico/`: immagini del precedente collaudo della riproduzione.

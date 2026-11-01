@@ -1,47 +1,59 @@
 <!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>iurub — fixture di test</title>
 <style>body{font:16px -apple-system;background:#faf8f5;color:#202020;margin:0;padding:16px}h1{font-size:20px}ytm-video-with-context-renderer,ytm-reel-shelf-renderer,ytm-shorts-lockup-view-model{display:block;border:1px solid #ddd;border-radius:16px;margin:18px 0;overflow:hidden;background:white}a{display:block;color:inherit;text-decoration:none}h3{margin:14px}.thumb{height:130px;background:linear-gradient(135deg,#1c4046,#7ca598);display:grid;place-items:center;color:white;font-size:36px}.byline{padding:0 14px 8px;font-size:13px;color:#666}button{min-height:44px}#test-controls{display:flex;gap:10px}</style></head><body>
-<h1>Home · fixture di test</h1><p>Contenuti locali per test ripetibili, non il sito YouTube.</p>
-<ytm-video-with-context-renderer><a href="/watch?v=jfKfPfyJRdk"><div class="thumb">♫</div><h3>Musica per concentrarsi</h3></a><div class="byline">Canale di prova</div></ytm-video-with-context-renderer>
-<ytm-reel-shelf-renderer id="short-shelf"><h2>Shorts</h2><ytm-shorts-lockup-view-model><a href="/shorts/aqz-KE-bpKQ"><h3>Short di prova</h3></a></ytm-shorts-lockup-view-model></ytm-reel-shelf-renderer>
-<div id="test-controls"><button onclick="addDynamic()">Aggiungi scheda dinamica</button><button onclick="history.pushState({},'', '/shorts/aqz-KE-bpKQ')">Apri Short diretto</button></div>
 <script>
 /*IURUB_FIXTURE_ACCOUNT*/
 window.fixtureAccountIDs = window.fixtureAccountIDs || [];
-if (window.fixtureStartPage === 'watchLater') {
-  document.documentElement.dataset.fixturePlaylist = 'true';
-  const titles = {'M7lc1UVf-VE':'Video già salvato nell’account','jfKfPfyJRdk':'Musica per concentrarsi'};
-  function renderPlaylist() {
-    document.body.innerHTML = '<h1>Guarda più tardi · account di prova</h1><p>Playlist YouTube simulata per i test.</p>';
-    for (const id of window.fixtureAccountIDs) {
-      const card = document.createElement('ytm-playlist-video-renderer');
-      card.innerHTML = `<a href="/watch?v=${id}"><h3>${titles[id] || 'Video di prova'}</h3></a>`;
-      const menuButton = document.createElement('button'); menuButton.textContent='⋯'; menuButton.setAttribute('aria-label','Menu azioni');
-      menuButton.onclick = () => {
-        const menu = document.createElement('div'); menu.setAttribute('role','dialog');
-        const remove = document.createElement('button'); remove.textContent='Rimuovi da Guarda più tardi';
-        remove.onclick = () => {
-          window.fixtureAccountIDs = window.fixtureAccountIDs.filter(v => v !== id);
-          window.webkit?.messageHandlers?.iurub?.postMessage({type:'fixtureAccountRemove',id});
-          menu.remove(); card.remove();
-          const toast = document.createElement('div'); toast.setAttribute('role','status'); toast.textContent='Rimosso da Guarda più tardi ';
-          const undo = document.createElement('button'); undo.textContent='Annulla';
-          undo.onclick = () => {
-            window.fixtureAccountIDs.push(id);
-            window.webkit?.messageHandlers?.iurub?.postMessage({type:'fixtureAccountSave',id});
-            renderPlaylist();
-          };
-          toast.append(undo); document.body.append(toast);
+const paths = {home:'/',watchLater:'/playlist?list=WL',subscriptions:'/feed/subscriptions',history:'/feed/history',you:'/feed/library'};
+const titles = {'M7lc1UVf-VE':'Video già salvato nell’account','jfKfPfyJRdk':'Musica per concentrarsi'};
+function accountMessage(type, id) { window.webkit?.messageHandlers?.iurub?.postMessage({type,id}); }
+function siteNavigation() {
+  const bar = document.createElement('ytm-pivot-bar-renderer');
+  bar.innerHTML='<button>Home</button><button>Iscrizioni</button><button>Tu</button>';
+  document.body.append(bar);
+}
+function renderPlaylist() {
+  document.body.innerHTML = '<h1>Guarda più tardi · account di prova</h1><p>Playlist YouTube simulata per i test.</p>';
+  for (const id of window.fixtureAccountIDs) {
+    const card = document.createElement('ytm-playlist-video-renderer');
+    card.innerHTML = `<a href="/watch?v=${id}"><h3>${titles[id] || 'Video di prova'}</h3></a>`;
+    const menuButton = document.createElement('button'); menuButton.textContent='⋯'; menuButton.setAttribute('aria-label','Menu Azione');
+    menuButton.onclick = () => {
+      const menu = document.createElement('div'); menu.setAttribute('role','dialog');
+      const remove = document.createElement('button'); remove.textContent='Rimuovi da Guarda più tardi';
+      remove.onclick = () => {
+        window.fixtureAccountIDs = window.fixtureAccountIDs.filter(v => v !== id);
+        accountMessage('fixtureAccountRemove',id);
+        menu.remove(); card.remove();
+        const toast = document.createElement('div'); toast.setAttribute('role','status'); toast.textContent='Rimosso da Guarda più tardi ';
+        const undo = document.createElement('button'); undo.textContent='Annulla';
+        undo.onclick = () => {
+          window.fixtureAccountIDs.push(id);
+          accountMessage('fixtureAccountSave',id);
+          renderPlaylist();
         };
-        menu.append(remove); document.body.append(menu);
+        toast.append(undo); document.body.append(toast);
       };
-      card.append(menuButton); document.body.append(card);
-    }
+      menu.append(remove); document.body.append(menu);
+    };
+    card.append(menuButton); document.body.append(card);
   }
-  renderPlaylist();
-} else {
+  siteNavigation();
+}
+function renderPage(page) {
+  document.documentElement.dataset.fixturePlaylist = String(page === 'watchLater');
+  if (page === 'watchLater') { renderPlaylist(); return; }
+  const heading = {home:'Home',subscriptions:'Iscrizioni',history:'Cronologia',you:'Tu'}[page];
+  document.body.innerHTML = `<h1>${heading} · fixture di test</h1><p>Contenuti locali per test ripetibili, non il sito YouTube.</p>`;
+  if (page === 'you') {
+    document.body.insertAdjacentHTML('beforeend','<p>Il tuo account YouTube</p>');
+    siteNavigation(); return;
+  }
+  document.body.insertAdjacentHTML('beforeend', `<ytm-video-with-context-renderer><a href="/watch?v=jfKfPfyJRdk"><div class="thumb">♫</div><h3>Musica per concentrarsi</h3></a><div class="byline">Canale di prova</div></ytm-video-with-context-renderer>
+    <ytm-reel-shelf-renderer id="short-shelf"><h2>Shorts</h2><ytm-shorts-lockup-view-model><a href="/shorts/aqz-KE-bpKQ"><h3>Short di prova</h3></a></ytm-shorts-lockup-view-model></ytm-reel-shelf-renderer>
+    <div id="test-controls"><button onclick="addDynamic()">Aggiungi scheda dinamica</button><button onclick="history.pushState({},'', '/shorts/aqz-KE-bpKQ')">Apri Short diretto</button></div>`);
   const card = document.querySelector('ytm-video-with-context-renderer');
   const menuButton = document.createElement('button');
-  menuButton.setAttribute('aria-label','Menu azioni'); menuButton.textContent = '⋯';
+  menuButton.setAttribute('aria-label','Menu Azione'); menuButton.textContent = '⋯';
   menuButton.onclick = () => {
     document.querySelector('[role="dialog"]')?.remove();
     const menu = document.createElement('div'); menu.setAttribute('role','dialog');
@@ -49,13 +61,19 @@ if (window.fixtureStartPage === 'watchLater') {
     entry.textContent = window.fixtureAccountIDs.includes('jfKfPfyJRdk') ? 'Rimuovi da Guarda più tardi' : 'Salva in Guarda più tardi';
     entry.onclick = () => {
       window.fixtureAccountIDs.push('jfKfPfyJRdk');
-      window.webkit?.messageHandlers?.iurub?.postMessage({type:'fixtureAccountSave',id:'jfKfPfyJRdk'});
+      accountMessage('fixtureAccountSave','jfKfPfyJRdk');
       menu.remove();
       const toast = document.createElement('div'); toast.setAttribute('role','status'); toast.textContent='Aggiunto a Guarda più tardi'; document.body.append(toast);
     };
     menu.append(entry); document.body.append(menu);
   };
-  card.append(menuButton);
+  card.append(menuButton); siteNavigation();
 }
-function addDynamic(){if(document.getElementById('dynamic'))return;const card=document.createElement('ytm-video-with-context-renderer');card.id='dynamic';card.innerHTML='<a href="/watch?v=M7lc1UVf-VE"><div class="thumb">▶</div><h3>Video aggiunto dinamicamente</h3></a><div class="byline">Secondo canale</div>';document.body.append(card);}</script>
-</body></html>
+window.fixtureNavigate = page => {
+  history.pushState({fixturePage:page},'',paths[page]);
+  renderPage(page);
+};
+window.addEventListener('popstate', event => renderPage(event.state?.fixturePage || window.fixtureStartPage || 'home'));
+function addDynamic(){if(document.getElementById('dynamic'))return;const card=document.createElement('ytm-video-with-context-renderer');card.id='dynamic';card.innerHTML='<a href="/watch?v=M7lc1UVf-VE"><div class="thumb">▶</div><h3>Video aggiunto dinamicamente</h3></a><div class="byline">Secondo canale</div>';document.body.append(card);}
+renderPage(window.fixtureStartPage || 'home');
+</script></body></html>
