@@ -25,4 +25,9 @@
 - [x] Integrazione WKWebView su macOS e salvataggio da YouTube reale verificati.
 - [x] Typecheck dei rami UIKit tramite Mac Catalyst e compilazione dei rami macOS.
 - [x] Progetto Xcode, test UI e script per il simulatore preparati.
-- [ ] Build iOS, XCUITest nel simulatore, playback e login: bloccati dal primo avvio di Xcode: versione 27.2 installata, licenza ancora da accettare. Dettagli in TEST-REPORT.md.
+- [x] Xcode 27.2 e runtime iOS 27.2 configurati; build Debug simulatore e Release iPhone riuscite.
+- [x] XCUITest su iPhone Air: tab, salvataggio da Home e URL, persistenza, rimozione/annullamento e toggle Shorts.
+- [x] YouTube reale: ricerca, salvataggio, riavvio, apertura e avanzamento del video nel simulatore.
+- [ ] Login Google, dispositivo fisico, PiP/AirPlay: richiedono verifiche separate; nessuna credenziale o firma personale utilizzata.
+
+Il blocco iniziale di Xcode è superato. Esiti, screenshot e limiti del collaudo sono in `TEST-REPORT.md`.

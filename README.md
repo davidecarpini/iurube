@@ -45,9 +45,12 @@ npm ci --ignore-scripts
 npm test                     # Bridge JS, Shorts, schede dinamiche, metadati e sicurezza URL
 ./scripts/test-webkit.sh     # Integrazione reale Swift ↔ WebKit su macOS
 ./scripts/simulator.sh test  # Swift Testing + XCUITest nel simulatore iOS
+./scripts/simulator.sh live  # Test opzionale sul sito YouTube reale (richiede rete)
 ```
 
 I test UI usano `--ui-testing --reset-state --fixture` e una lista separata. Le fixture sono attivate soltanto in build Debug con questi argomenti; l’avvio normale mostra YouTube reale e una lista vuota. Nessuna fixture o credenziale viene inserita nella lista personale.
+
+Il test `live` usa una lista di prova separata ma il sito YouTube reale: cerca un video, lo salva, verifica la persistenza dopo il riavvio e controlla l’avanzamento del player. Può cambiare esito se YouTube modifica l’interfaccia o limita l’accesso; non effettua il login. Gli screenshot sono allegati ai risultati `.xcresult` in `build/`.
 
 Per testare un link in simulatore:
 

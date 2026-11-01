@@ -1,82 +1,71 @@
 # iurub — rapporto di verifica
 
-31 ottobre 2026 · progetto: `/Users/davidecarpini/apps/iurub`
+1 novembre 2026 · progetto: `/Users/davidecarpini/apps/iurub`
 
 ## Stato
 
-Implementazione completata nel progetto Xcode. Xcode 27.2 (27B52) è ora installato. **Compilazione iOS e test nel simulatore non eseguiti**: il primo avvio è bloccato dalla licenza Xcode/Apple SDK non ancora accettata. Il progetto non va descritto come già collaudato su iPhone.
+App implementata, compilata e avviata nel simulatore **iPhone Air con iOS 27.2 (24B8117)**, usando **Xcode 27.2 (27B52)**. Il precedente blocco del primo avvio di Xcode è superato. Il monitor automatico è stato rimosso.
 
-## Implementato
+La suite iOS finale ha concluso con **13 test superati, 0 fallimenti, 0 test saltati**: 10 test Swift e 3 test XCUITest. Risultati in `build/Tests-20261101-153540.xcresult`.
 
-- Tab sinistra **Guarda più tardi**, prima schermata all’avvio: lista locale persistente, ricerca, ordinamento, apertura player, rimozione e annullamento.
-- Tab destra **Home**: sito YouTube mobile originale. Pulsante aggiunto alle schede video e pulsante nativo sul video aperto.
-- Impostazioni con toggle **Abilita Shorts**, spento inizialmente e persistente.
-- Filtri per scaffali, schede e tab Shorts; blocco URL e navigazioni SPA. Riabilitazione senza cancellare la lista.
-- Aggiunta di link, condivisione, gestione errori, pausa della riproduzione quando si lascia il contenuto.
-- Icona originale, progetto generato, test e script di avvio.
+Anche il test live finale è **superato**: 1 scenario end-to-end, 0 fallimenti, con avanzamento del player rilevato da 1 a 2 secondi e ritorno alla lista dopo la chiusura. Risultati in `build/Tests-20261101-154434.xcresult`. Complessivamente: **14 test iOS superati nelle due esecuzioni finali**.
 
-La lista è **locale a iurub** e non sincronizza la playlist del proprio account Google. Il login non è necessario per salvare. L’accesso Google e la riproduzione sono soggetti al comportamento del sito nella WKWebView.
+## Funzioni verificate
 
-## Verifiche eseguite
+- **Guarda più tardi** è la tab sinistra e la schermata iniziale.
+- **Home** apre il sito mobile YouTube originale. Il pulsante **+ Guarda più tardi** compare sulle schede video reali; il video aperto ha anche un pulsante nativo di salvataggio.
+- Salvataggio dalla Home e da URL, validazione dei link, deduplicazione e persistenza dopo la chiusura e il riavvio dell’app.
+- Rimozione dalla lista e annullamento.
+- Toggle **Abilita Shorts** spento inizialmente; contenuti nascosti, ripristinati quando abilitati, preferenza conservata dopo il riavvio e nuovo blocco quando disabilitati.
+- Ricerca di un video sul sito reale, salvataggio con titolo e miniatura, riapertura dalla lista dopo il riavvio e avvio della riproduzione. Nel collaudo del player è stato osservato un avanzamento fino a 25 secondi.
 
-| Verifica | Risultato | Ambito reale |
+**La lista è locale a iurub: non sincronizza la playlist del tuo account Google.** Non occorre il login per salvare video. I test utilizzano una lista separata; l’avvio normale non contiene i video dimostrativi.
+
+## Risultati
+
+| Verifica | Esito | Ambito |
 |---|---|---|
-| Modelli Swift | **10 test passati** | Codice di produzione, eseguito su macOS con Swift Testing |
-| Bridge JavaScript | **9 test passati** | DOM controllato con jsdom, incluse schede riciclate e navigazione dinamica |
-| Swift ↔ WebKit | **17 verifiche passate** | WKWebView reale su macOS; fixture e sito YouTube live |
-| Interfaccia condivisa | **Compilata** | Sorgenti SwiftUI compilati con SDK macOS 26.5 |
-| Rami UIKit/iOS | **Typecheck passato** | Target Mac Catalyst iOS 17, usando il supporto UIKit del SDK macOS; non build iPhone |
-| Rendering SwiftUI | **Eseguito** | Schermata vuota nativa macOS; non screenshot iPhone |
-| Progetto e plist | **Validi** | XcodeGen 2.46.0, `plutil`, controllo sintassi degli script |
-| Test UI iPhone | **Non eseguiti** | Suite XCUITest pronta nel progetto |
-| Riproduzione video completa, fullscreen, rotazione | **Da verificare su iOS** | Non dichiarati come test superati |
-| Login Google | **Non verificato** | Nessuna credenziale utilizzata |
+| Build Debug iOS Simulator | Superata | App nativa arm64 |
+| Build Release iPhone | Superata | SDK iPhoneOS; compilazione senza firma personale |
+| Swift Testing | 10/10 superati | Eseguiti anche nel simulatore iOS |
+| XCUITest | 3/3 superati | Tab, URL, Home, persistenza, rimozione/annullamento, toggle Shorts |
+| Bridge JavaScript | 9/9 superati | jsdom, esecuzione precedente sul medesimo bridge |
+| Integrazione Swift/WebKit | 17/17 superate | WKWebView macOS, fixture e YouTube live; verifiche precedenti |
+| XCUITest YouTube live | 1/1 superato | Ricerca, salvataggio, riavvio, avanzamento del player e chiusura |
+| Login Google | Non verificato | Nessuna credenziale utilizzata |
+| iPhone fisico, fullscreen/rotazione, PiP/AirPlay | Non verificati | Non inclusi negli esiti superati |
 
-### Dettagli dei test
+I test Swift coprono URL validi e ostili, canonicalizzazione, metadati, duplicati, persistenza, ordine, rimozione/annullamento, file corrotti, scritture fallite e impostazioni. Il bridge verifica origine, conferma del salvataggio nativo, filtri ripristinabili e schede aggiunte o riciclate.
 
-I test Swift coprono URL validi e ostili, canonicalizzazione, duplicati, persistenza fra istanze, rimozione/annullamento, ordinamento, file corrotti, scritture fallite e impostazioni.
+Nel collaudo è stato corretto il gesto XCUITest sul toggle: SwiftUI espone l’intera riga come interruttore, ma occorre toccare il controllo sul bordo destro. Il controllo del player è stato aggiornato per misurare l’avanzamento temporale, perché YouTube nasconde automaticamente i pulsanti di riproduzione. Lo script del simulatore seleziona ora dispositivi compatibili con il runtime e avvia i test UI senza parallelismo. Termina inoltre l’app prima del collaudo, per consentire a XCTest un avvio pulito. Durante le prove una sessione di Xcode aveva dato un timeout di lancio: riavviato il simulatore, la suite completa e il test live finale sono terminati correttamente.
 
-I test JavaScript verificano un solo pulsante per scheda, metadati corretti, conferma del salvataggio ricevuta da Swift, filtri ripristinabili, contenuti aggiunti o riciclati, assenza di loop del MutationObserver, blocco dei link Shorts e mancata iniezione nelle pagine di login.
-
-Nel test WebKit live:
-
-- Il sito YouTube è stato caricato e il bridge inizializzato.
-- La voce Shorts della barra inferiore, che non usa un link, è stata individuata e correttamente nascosta.
-- I pulsanti sono comparsi nei risultati reali di una ricerca.
-- Un video reale è stato passato al codice Swift, salvato in una lista temporanea e riletto da disco.
-- Il dialogo di consenso di YouTube è rimasto visibile: il test ha verificato programmaticamente i pulsanti aggiunti e il bridge, **non l’interazione manuale completa né la riproduzione**.
-- I messaggi di salvataggio provenienti da un’origine diversa da YouTube sono stati rifiutati.
-
-Le fixture non inseriscono dati nella lista personale. Screenshot e log di sviluppo sono sotto `work/`, esclusi da Git.
-
-## Blocco attuale del simulatore
-
-Controllo automatico del 31 ottobre 2026, ore 15:16 (Europe/Rome):
-
-- Xcode 27.2, build 27B52, è installato in /Applications/Xcode.app.
-- xcodebuild -checkFirstLaunchStatus termina con codice 69.
-- xcodebuild -runFirstLaunch termina con codice 77: «You have not agreed to the Xcode license agreements».
-- Occorre aprire Xcode, esaminare e accettare la licenza e completare l’installazione iniziale dei componenti. Questo passaggio richiede l’intervento dell’utente.
-- Nessuna licenza è stata accettata automaticamente. Nessun test nel simulatore è stato avviato in questo controllo.
-- Il monitor del download è stato rimosso dopo questa notifica, perché il download è terminato e ora serve un’azione dell’utente.
-
-Il precedente impedimento al download è superato: l’utente ha installato Xcode tramite App Store.
-
-## Completare la verifica iPhone
-
-Aprire Xcode già installato e completare il primo avvio (licenza e componenti). Poi:
+## Ripetere i controlli
 
 ```sh
 cd /Users/davidecarpini/apps/iurub
 ./scripts/simulator.sh test
+./scripts/simulator.sh live
+./scripts/simulator.sh run
 ```
 
-Lo script installa il runtime iOS se necessario, seleziona o crea un simulatore iPhone, esegue i test, compila, installa e avvia l’app reale. I risultati XCUITest sono salvati in `build/*.xcresult`.
+`test` esegue la suite ripetibile con fixture locali. `live` esegue il percorso sul sito reale e richiede Internet; l’esito dipende anche dall’interfaccia e dalla disponibilità di YouTube. Entrambi mantengono separata la lista di prova. I risultati e gli screenshot allegati vengono salvati in `build/*.xcresult`.
 
-Per il collaudo manuale finale: completare il consenso YouTube, cercare un video, salvarlo, ritrovarlo dopo il riavvio, riprodurlo, verificare fullscreen/rotazione e provare il toggle Shorts. Il login Google va valutato separatamente, senza darlo per funzionante.
+`run` compila, installa e avvia l’app normale. Il progetto `iurub.xcodeproj` è già generato e non richiede dipendenze esterne per la build. Per installare su un iPhone fisico occorre impostare il proprio team Apple in Signing & Capabilities.
 
-## Riferimenti
+## Screenshot e consegna
 
-- [Download e risorse Xcode, Apple](https://developer.apple.com/xcode/resources/)
-- [Componenti e runtime aggiuntivi, Apple](https://developer.apple.com/documentation/xcode/downloading-and-installing-additional-xcode-components)
-- [Google: OAuth nei browser incorporati](https://developers.googleblog.com/en/upcoming-security-changes-to-googles-oauth-20-authorization-endpoint-in-embedded-webviews/)
+Gli screenshot allegati sono acquisizioni originali del simulatore, senza ricostruzioni grafiche:
+
+- `iurub-guarda-piu-tardi.png`: video reale salvato nella lista di prova.
+- `iurub-youtube.png`: ricerca YouTube reale e pulsante aggiunto alle schede.
+- `iurub-impostazioni.png`: impostazioni native con Shorts abilitati nel test.
+- `iurub-riproduzione.png`: fotogramma del video durante la riproduzione reale.
+- `iurub-avvio.png`: avvio normale, lista personale vuota e tab sinistra selezionata.
+- `iurub-test-ios.json`: riepilogo originale esportato da Xcode dei 13 test superati.
+- `iurub-test-live.json`: riepilogo originale del test live finale superato.
+
+`iurub-sorgenti.zip` contiene sorgenti, progetto Xcode, piano, test, script e documentazione. `Avvia-iurub.command` avvia il progetto già presente su questo Mac; `LEGGIMI.txt` contiene le istruzioni brevi.
+
+## Limiti
+
+L’app usa il sito e il player originali: rete, pubblicità, consenso e disponibilità dei contenuti rimangono gestiti da YouTube. I filtri e i pulsanti dipendono dal DOM del sito e possono richiedere aggiornamenti se Google lo modifica. L’accesso Google nella WKWebView non è garantito e non è stato collaudato. Non è stata effettuata una pubblicazione su App Store né un’installazione firmata su un iPhone fisico.
