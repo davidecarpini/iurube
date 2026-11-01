@@ -2,35 +2,67 @@ import SwiftUI
 
 struct MainView: View {
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var playback: PlaybackStore
     @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var player = BrowserSession(saveDestination: .youtube, role: .player)
     @StateObject private var watchLater = BrowserSession(startPage: .watchLater, saveDestination: .youtube)
     @StateObject private var subscriptions = BrowserSession(startPage: .subscriptions, saveDestination: .youtube)
     @StateObject private var history = BrowserSession(startPage: .history, saveDestination: .youtube)
     @StateObject private var home = BrowserSession(saveDestination: .youtube)
-    @State private var selectedTab = 0
+    @State private var selectedTab = 1
     @State private var showingSettings = false
+    @State private var didStart = false
+    @State private var openingVideoToken = UUID()
+    @State private var savedNeedsRefresh = false
 
-    private var sessions: [BrowserSession] { [watchLater, subscriptions, history, home] }
+    private var sessions: [BrowserSession] { [player, watchLater, subscriptions, history, home] }
 
     var body: some View {
-        TabView(selection: $selectedTab) {
+        TabView(selection: Binding(get: { selectedTab }, set: selectTab)) {
+            inProgressTab
+                .tabItem { Label("In corso", systemImage: "play.circle.fill") }.tag(0)
             browserTab(watchLater)
-                .tabItem { Label("Salvati", systemImage: "bookmark.fill") }.tag(0)
+                .tabItem { Label("Salvati", systemImage: "bookmark.fill") }.tag(1)
             browserTab(subscriptions)
-                .tabItem { Label("Iscrizioni", systemImage: "play.rectangle.on.rectangle") }.tag(1)
+                .tabItem { Label("Iscrizioni", systemImage: "play.rectangle.on.rectangle") }.tag(2)
             browserTab(history)
-                .tabItem { Label("Cronologia", systemImage: "clock.arrow.circlepath") }.tag(2)
+                .tabItem { Label("Cronologia", systemImage: "clock.arrow.circlepath") }.tag(3)
             browserTab(home)
-                .tabItem { Label("Esplora", systemImage: "safari") }.tag(3)
+                .tabItem { Label("Esplora", systemImage: "safari") }.tag(4)
         }
+        #if DEBUG
+        .overlay(alignment: .topLeading) {
+            if ProcessInfo.processInfo.arguments.contains("--playback-live"),
+               let record = playback.current, let data = try? JSONEncoder().encode(record) {
+                // Expose actual media checkpoints to the opt-in simulator test.
+                // It cannot read another app's protected container directly.
+                Text(String(decoding: data, as: UTF8.self))
+                    .font(.system(size: 1)).frame(width: 1, height: 1).opacity(0.01)
+                    .accessibilityIdentifier("livePlaybackStatus").allowsHitTesting(false)
+            }
+        }
+        #endif
         .sheet(isPresented: $showingSettings) { SettingsView() }
-        .onAppear { watchLater.startIfNeeded() }
+        .onAppear(perform: start)
         .onReceive(settings.$shortsEnabled) { enabled in
             for session in sessions { session.configure(shortsEnabled: enabled, savedIDs: []) }
         }
-        .onChange(of: selectedTab) { _, tab in
+        .onReceive(player.$saveFeedback) { feedback in
+            if feedback != nil { savedNeedsRefresh = true }
+        }
+        .onChange(of: settings.shortsEnabled) { _, _ in
+            if selectedTab == 0 { ensurePlayer() }
+        }
+        .onChange(of: selectedTab) { old, tab in
+            if old == 0 { player.captureProgress() }
             for (index, session) in sessions.enumerated() where index != tab { session.pause() }
-            if tab == 0 || tab == 2 { sessions[tab].openStartPage() }
+            if tab == 0 { ensurePlayer() }
+            else if tab == 1 && savedNeedsRefresh {
+                savedNeedsRefresh = false
+                watchLater.openStartPage()
+            }
+            else if old == 0 { sessions[tab].startIfNeeded() }
+            else if tab == 1 || tab == 3 { sessions[tab].openStartPage() }
             else { sessions[tab].startIfNeeded() }
         }
         .onChange(of: showingSettings) { _, showing in if showing { pauseAll() } }
@@ -38,15 +70,54 @@ struct MainView: View {
         .onOpenURL { url in
             guard url.scheme == "iurub", url.host == "open",
                   let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "url" })?.value,
-                  let link = VideoLink.parse(raw) else { return }
-            selectedTab = 3
-            home.load(link.url)
+                  let sourceURL = URL(string: raw), let link = VideoLink.parse(raw) else { return }
+            openInProgress(SavedVideo(link: link), startAt: PlaybackRecord.startTime(in: sourceURL))
+        }
+    }
+
+    @ViewBuilder private var inProgressTab: some View {
+        if let current = playback.current {
+            if current.video.isShort && !settings.shortsEnabled {
+                inProgressPlaceholder(title: "Gli Shorts sono disattivati", symbol: "play.slash",
+                                      detail: "Il punto di riproduzione è al sicuro. Abilita gli Shorts nelle impostazioni per continuare.",
+                                      button: "Apri impostazioni", action: { showingSettings = true })
+            } else {
+                browserTab(player)
+            }
+        } else {
+            inProgressPlaceholder(title: "Un video alla volta", symbol: "play.circle",
+                                  detail: "Apri un video da Salvati o Esplora. Lo ritrovi qui, dal punto in cui ti sei fermato.",
+                                  button: "Apri Salvati", action: { selectedTab = 1 })
+        }
+    }
+
+    private func inProgressPlaceholder(title: String, symbol: String, detail: String, button: String,
+                                       action: @escaping () -> Void) -> some View {
+        NavigationStack {
+            ContentUnavailableView {
+                Label(title, systemImage: symbol)
+            } description: { Text(detail) } actions: {
+                Button(button, action: action).buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("inProgressAction")
+            }
+            .background(Theme.canvas)
+            .toolbar {
+                ToolbarItem(placement: .principal) { BrandMark() }
+                ToolbarItem(placement: .primaryAction) { SettingsButton { showingSettings = true } }
+            }
+            .inlineTitle()
         }
     }
 
     private func browserTab(_ session: BrowserSession) -> some View {
         NavigationStack {
             BrowserPane(session: session, extendsToBottom: true)
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if session === player, let error = playback.errorMessage {
+                        Text(error).font(.caption).padding(10).frame(maxWidth: .infinity)
+                            .background(.regularMaterial)
+                    }
+                }
                 .toolbar {
                     ToolbarItem(placement: .principal) { BrandMark() }
                     ToolbarItemGroup(placement: .appLeading) {
@@ -71,7 +142,85 @@ struct MainView: View {
         }
     }
 
-    private func pauseAll() { sessions.forEach { $0.pause() } }
+    private func start() {
+        for session in sessions {
+            session.onOpenVideo = { video, position in openInProgress(video, startAt: position) }
+            session.configure(shortsEnabled: settings.shortsEnabled, savedIDs: [])
+        }
+        player.onPlayback = { id, position, duration, ended in
+            playback.update(videoID: id, position: position, duration: duration, ended: ended)
+        }
+        player.onMetadata = { video in playback.updateMetadata(video) }
+        player.onRestoreVideo = { video in playback.select(video: video) }
+        guard !didStart else { return }
+        didStart = true
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--playback-live"), arguments.contains("--start-video-at-8") {
+            openInProgress(SavedVideo(link: VideoLink(id: "jNQXAC9IVRw", isShort: false), title: "Me at the zoo"), startAt: 8)
+            return
+        }
+        if arguments.contains("--summary-live") || arguments.contains("--summary-fixture") {
+            watchLater.startIfNeeded()
+            return
+        }
+        #endif
+        if let current = playback.current, !current.completed {
+            selectedTab = 0
+        } else {
+            watchLater.startIfNeeded()
+        }
+    }
+
+    private func openInProgress(_ video: SavedVideo, startAt: Double?) {
+        guard settings.shortsEnabled || !video.isShort else { return }
+        if playback.current?.video.id == video.id, playback.current?.completed == false,
+           startAt == nil, playerIsShowing(video.id) {
+            playback.updateMetadata(video)
+            selectedTab = 0
+            return
+        }
+        let token = UUID()
+        openingVideoToken = token
+        player.pause()
+        player.captureProgress {
+            guard openingVideoToken == token else { return }
+            let record = playback.select(video: video, startAt: startAt)
+            player.loadVideo(record.video, position: record.position)
+            selectedTab = 0
+        }
+    }
+
+    private func playerIsShowing(_ videoID: String) -> Bool {
+        player.currentVideo?.id == videoID && (player.isLoading || player.webView.url.flatMap { VideoLink.parse($0.absoluteString) }?.id == videoID)
+    }
+
+    private func ensurePlayer() {
+        guard let record = playback.current, settings.shortsEnabled || !record.video.isShort else { return }
+        if !playerIsShowing(record.video.id) { player.loadVideo(record.video, position: record.position) }
+    }
+
+    private func selectTab(_ tab: Int) {
+        guard sessions.indices.contains(tab) else { return }
+        if tab != 0 { openingVideoToken = UUID() }
+        if selectedTab == tab {
+            if tab == 0 {
+                // A second tap must never reset the current video's playhead.
+                ensurePlayer()
+            } else {
+                pauseAll()
+                if tab == 1 { savedNeedsRefresh = false }
+                sessions[tab].openStartPage()
+            }
+        } else {
+            selectedTab = tab
+        }
+    }
+
+    private func pauseAll() {
+        player.captureProgress()
+        sessions.forEach { $0.pause() }
+    }
 }
 
 // Preserve the original on-device library without presenting it as the Google playlist.

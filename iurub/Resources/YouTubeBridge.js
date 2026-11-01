@@ -5,9 +5,14 @@
   if (!(originHost === 'youtube.com' || originHost.endsWith('.youtube.com'))) return;
   const initial = window.__iurubConfig || {};
   const accountSaving = initial.saveDestination === 'youtube';
+  // Ordinary configuration cannot relabel a document. History restoration uses
+  // the explicit URL-checked adoption API below.
+  let playbackSession = typeof initial.playbackSession === 'string' ? initial.playbackSession : undefined;
   let savingToAccount = false;
   let shortsEnabled = Boolean(initial.shortsEnabled);
   let savedIDs = new Set(initial.savedIDs || []);
+  let routeVideoOpens = Boolean(initial.routeVideoOpens);
+  let trackPlayback = Boolean(initial.trackPlayback);
   let scanQueued = false;
   let lastCurrent = '';
   const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
@@ -64,11 +69,35 @@
       ytm-app { padding-bottom:0 !important; }
       html.iurub-no-shorts ${SHORT_SHELF.split(',').join(',html.iurub-no-shorts ')} { display:none !important; }
       html.iurub-no-shorts a[href^="/shorts/"], html.iurub-no-shorts a[href*="youtube.com/shorts/"] { display:none !important; }
-      .iurub-save { box-sizing:border-box; display:flex; align-items:center; justify-content:center; gap:6px; min-height:44px; margin:8px 12px 12px; padding:10px 14px; border:1px solid #e84a3838; border-radius:12px; background:#fff5f2; color:#aa3022; font:600 13px -apple-system,BlinkMacSystemFont,sans-serif; cursor:pointer; position:relative; z-index:2; -webkit-tap-highlight-color:transparent; }
-      .iurub-remove { display:inline-flex; align-items:center; min-height:44px; margin:4px 12px 10px; padding:8px 14px; border:1px solid #e84a3838; border-radius:12px; background:#fff5f2; color:#aa3022; font:600 13px -apple-system,BlinkMacSystemFont,sans-serif; cursor:pointer; }
-      .iurub-save:focus-visible, .iurub-remove:focus-visible { outline:3px solid #e84a38; outline-offset:2px; }
-      .iurub-save[data-saved="true"] { color:#396548; border-color:#487b4933; background:#f1f7ef; }
-      @media(prefers-color-scheme:dark) { .iurub-save, .iurub-remove { background:#33211d; color:#ffae9e; border-color:#995346; } .iurub-save[data-saved="true"] { background:#1e3025; color:#a4d2b1; } }
+      html.iurub-watch-later yt-page-header-renderer,
+      html.iurub-watch-later ytm-playlist-header-renderer,
+      html.iurub-watch-later ytm-playlist-header-renderer-v2,
+      html.iurub-watch-later ytd-playlist-header-renderer { display:none !important; }
+      html.iurub-watch-later { --iurub-toolbar-background:#fff; --iurub-toolbar-foreground:#0f0f0f; }
+      html.iurub-watch-later ytm-mobile-topbar-renderer,
+      html.iurub-watch-later ytm-mobile-topbar-renderer .mobile-topbar-header { background:var(--yt-spec-base-background,var(--iurub-toolbar-background)) !important; color:var(--yt-spec-text-primary,var(--iurub-toolbar-foreground)) !important; }
+      html.iurub-watch-later ytm-mobile-topbar-renderer .mobile-topbar-title { display:block !important; opacity:1 !important; visibility:visible !important; }
+      html.iurub-watch-later ytm-mobile-topbar-renderer .mobile-topbar-title,
+      html.iurub-watch-later ytm-mobile-topbar-renderer button,
+      html.iurub-watch-later ytm-mobile-topbar-renderer c3-icon { color:var(--yt-spec-text-primary,var(--iurub-toolbar-foreground)) !important; }
+      @media(prefers-color-scheme:dark) { html.iurub-watch-later { --iurub-toolbar-background:#0f0f0f; --iurub-toolbar-foreground:#f1f1f1; } }
+      .iurub-save, .iurub-remove { box-sizing:border-box; display:inline-flex; flex:0 0 44px; align-items:center; justify-content:center; width:44px; height:44px; min-width:44px; min-height:44px; margin:0; padding:0; border:0; border-radius:50%; background:transparent; color:#ef3e32; cursor:pointer; position:relative; z-index:2; -webkit-tap-highlight-color:transparent; }
+      .iurub-save::before, .iurub-remove::before { content:""; position:absolute; inset:5px; border-radius:50%; background:#ff3b3010; }
+      .iurub-save svg, .iurub-remove svg { position:relative; width:20px; height:20px; pointer-events:none; }
+      .iurub-save:active::before, .iurub-remove:active::before { background:#ff3b3025; }
+      .iurub-save:disabled, .iurub-remove:disabled { opacity:.45; }
+      .iurub-save:focus-visible, .iurub-remove:focus-visible { outline:3px solid #e84a38; outline-offset:-3px; }
+      .iurub-save[data-saved="true"] { color:#396548; }
+      .iurub-save[data-saved="true"]::before { background:#487b4918; }
+      .iurub-action-label { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
+      .iurub-inline-details { display:flex !important; align-items:flex-start; }
+      .iurub-inline-details > .media-item-metadata, .iurub-inline-details > .ytLockupMetadataViewModelTextContainer { flex:1 1 auto; min-width:0; }
+      .iurub-inline-details > .iurub-save { align-self:flex-start; }
+      .iurub-stacked-menu { display:flex !important; flex-direction:column; align-items:center; flex-shrink:0; overflow:visible; }
+      .iurub-compact-card { position:relative; }
+      .iurub-compact-card > .iurub-save, .iurub-compact-card > .iurub-remove { position:absolute; right:4px; bottom:4px; }
+      .iurub-compact-card > a > h3, .iurub-compact-card > h3, .iurub-compact-card > .byline { padding-inline-end:48px; }
+      @media(prefers-color-scheme:dark) { .iurub-save, .iurub-remove { color:#ff9487; } .iurub-save::before, .iurub-remove::before { background:#ff81751c; } .iurub-save[data-saved="true"] { color:#a4d2b1; } }
     `;
     (document.head || document.documentElement).appendChild(style);
   }
@@ -182,18 +211,59 @@
     } catch { accountResult('manual'); }
     finally { savingToAccount = false; if (button) button.disabled = false; }
   }
+  const actionIcons = {
+    save: 'M7 3h10a1 1 0 0 1 1 1v17l-6-4-6 4V4a1 1 0 0 1 1-1Z',
+    remove: 'M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6M14 11v6'
+  };
+  function setActionIcon(button, action, label) {
+    if (!button.querySelector('svg')) {
+      // DOM construction also works with YouTube's Trusted Types policy.
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      for (const [name, value] of Object.entries({viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'1.8','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'})) svg.setAttribute(name, value);
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', actionIcons[action]); svg.append(path);
+      const text = document.createElement('span'); text.className = 'iurub-action-label';
+      button.append(svg, text);
+    }
+    const text = button.querySelector('.iurub-action-label');
+    if (text.textContent !== label) text.textContent = label;
+    button.setAttribute('aria-label', label);
+    button.title = label;
+  }
+  function placeAction(card, button, removing) {
+    // Current mobile layouts put the title/avatar and menu in these rows.
+    // Insert alongside the site's menu without moving or replacing its controls.
+    const menu = card.querySelector('.YtmCompactMediaItemMenu, .ytLockupMetadataViewModelMenuButton, .media-item-menu');
+    const details = card.querySelector('.media-item-info, yt-lockup-metadata-view-model');
+    if (removing && menu) {
+      menu.classList.add('iurub-stacked-menu');
+      if (button.parentElement !== menu) menu.append(button);
+      card.classList.remove('iurub-compact-card');
+    } else if (!removing && details && menu && menu.parentElement === details) {
+      details.classList.add('iurub-inline-details');
+      menu.classList.remove('iurub-stacked-menu');
+      if (button.parentElement !== details) details.insertBefore(button, menu);
+      card.classList.remove('iurub-compact-card');
+    } else {
+      // Unknown or minimal layouts keep the control inside the existing card,
+      // never add a separate block underneath its thumbnail and description.
+      card.classList.add('iurub-compact-card');
+      if (button.parentElement !== card) card.append(button);
+    }
+  }
   function updateButton(button, id) {
     const saved = !accountSaving && savedIDs.has(id);
     const label = saved ? '✓ Salvato in Guarda più tardi' : '+ Guarda più tardi';
-    if (button.textContent !== label) button.textContent = label;
+    setActionIcon(button, 'save', label);
     button.dataset.saved = String(saved);
-    button.setAttribute('aria-label', label);
   }
   function scan() {
     scanQueued = false;
     if (!document.documentElement) return;
     installStyle();
     document.documentElement.classList.toggle('iurub-no-shorts', !shortsEnabled);
+    const inWatchLater = (location.pathname === '/playlist' && new URL(location.href).searchParams.get('list') === 'WL') || document.documentElement.dataset.fixturePlaylist === 'true';
+    document.documentElement.classList.toggle('iurub-watch-later', inWatchLater);
     // Re-evaluate labels on recycled cards: a card once used for a Short can later hold a normal video.
     document.querySelectorAll('[data-iurub-short]').forEach(n => n.removeAttribute('data-iurub-short'));
     document.querySelectorAll('.pivot-shorts').forEach(node => {
@@ -215,25 +285,24 @@
       const candidates = Array.from(card.querySelectorAll('a[href]'));
       const anchor = candidates.find(a => parseLink(a.getAttribute('href')));
       const link = anchor && parseLink(anchor.getAttribute('href'));
-      const inWatchLater = (location.pathname === '/playlist' && new URL(location.href).searchParams.get('list') === 'WL') || document.documentElement.dataset.fixturePlaylist === 'true';
-      let removeButton = Array.from(card.children).find(n => n.classList?.contains('iurub-remove'));
+      let removeButton = card.querySelector('.iurub-remove');
       if (accountSaving && inWatchLater && link) {
         card.querySelector('.iurub-save')?.remove();
         if (!removeButton) {
           removeButton = document.createElement('button'); removeButton.type = 'button';
-          removeButton.className = 'iurub-remove'; removeButton.textContent = 'Rimuovi';
-          removeButton.setAttribute('aria-label', 'Rimuovi da Guarda più tardi');
+          removeButton.className = 'iurub-remove';
+          setActionIcon(removeButton, 'remove', 'Rimuovi da Guarda più tardi');
           removeButton.addEventListener('click', event => {
             event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
             removeThroughYouTube(card, removeButton);
           });
-          card.append(removeButton);
         }
+        placeAction(card, removeButton, true);
         return;
       }
       removeButton?.remove();
-      let button = Array.from(card.children).find(n => n.classList?.contains('iurub-save'));
-      if (!link) { button?.remove(); return; }
+      let button = card.querySelector('.iurub-save');
+      if (!link) { button?.remove(); card.classList.remove('iurub-compact-card'); return; }
       if (!button) {
         button = document.createElement('button');
         button.className = 'iurub-save';
@@ -248,13 +317,15 @@
           // Native code acknowledges persistence before we display a saved state.
           post('save', { video: current });
         });
-        card.appendChild(button);
       }
+      placeAction(card, button, false);
       button.__iurubVideo = metadata(card, anchor, link);
       button.dataset.videoId = link.id;
       updateButton(button, link.id);
     });
     reportCurrent();
+    applyResume();
+    reportPlayback();
   }
   function scheduleScan() {
     if (scanQueued) return;
@@ -276,6 +347,130 @@
       post('current', { video: current });
     }
   }
+  function startSeconds(raw) {
+    try {
+      const url = new URL(raw, location.href);
+      const value = url.searchParams.get('t') ?? url.searchParams.get('start') ?? new URLSearchParams(url.hash.slice(1)).get('t');
+      if (value === null) return undefined;
+      let seconds;
+      if (/^\d+(?:\.\d+)?$/.test(value)) seconds = Number(value);
+      else {
+        const parts = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+(?:\.\d+)?)s)?$/.exec(value);
+        if (!parts || !parts.slice(1).some(Boolean)) return undefined;
+        seconds = Number(parts[1] || 0) * 3600 + Number(parts[2] || 0) * 60 + Number(parts[3] || 0);
+      }
+      return Number.isFinite(seconds) && seconds >= 0 && seconds <= 31536000 ? seconds : undefined;
+    } catch { return undefined; }
+  }
+  let lastRoutedOpen = { key:'', time:0 };
+  function routeVideo(raw, anchor) {
+    if (!routeVideoOpens) return false;
+    let link;
+    try { link = parseLink(new URL(raw, location.href).href); } catch { return false; }
+    if (!link || (!shortsEnabled && link.isShort)) return false;
+    if (!anchor) anchor = Array.from(document.querySelectorAll('a[href]')).find(a => parseLink(a.href)?.id === link.id);
+    const card = anchor?.closest(CARD);
+    const video = card ? metadata(card, anchor, link) : {
+      ...link,
+      title: clean(anchor?.getAttribute('title') || anchor?.getAttribute('aria-label') || anchor?.textContent || 'Video YouTube'),
+      channel: ''
+    };
+    const position = startSeconds(raw);
+    const key = link.id + ':' + String(position);
+    if (lastRoutedOpen.key !== key || Date.now() - lastRoutedOpen.time > 300) {
+      lastRoutedOpen = {key, time:Date.now()};
+      post('openVideo', {video, ...(position === undefined ? {} : {startSeconds:position})});
+    }
+    return true;
+  }
+
+  let boundMedia = null;
+  let boundVideoID = null;
+  let awaitingMetadata = false;
+  let pendingResume = null;
+  let appliedResumeKey = null;
+  let lastProgressTime = -Infinity;
+  let lastProgress = '';
+  const mainVideo = () => document.querySelector('#movie_player video') || document.querySelector('video.html5-main-video') || document.querySelector('video');
+  const unavailablePlayback = media => !media || document.querySelector('.ad-showing, .ad-interrupting, .html5-video-player.ytp-live') || !Number.isFinite(media.duration) || media.duration <= 0;
+  function bindMedia(media, metadataReady = false) {
+    const id = parseLink(location.href)?.id;
+    if (!id || !media) return;
+    if (boundMedia !== media) {
+      boundMedia = media; boundVideoID = id; awaitingMetadata = false;
+      lastProgressTime = -Infinity; lastProgress = '';
+    } else if (metadataReady) {
+      boundVideoID = id; awaitingMetadata = false;
+    } else if (!awaitingMetadata && boundVideoID === null) boundVideoID = id;
+  }
+  function applyResume(confirmedSeek = false) {
+    if (!trackPlayback || !pendingResume) return;
+    const media = mainVideo();
+    const id = parseLink(location.href)?.id;
+    bindMedia(media);
+    if (id !== pendingResume.id || boundVideoID !== id || awaitingMetadata || unavailablePlayback(media) || media.readyState < 1) return;
+    const target = Math.min(pendingResume.position, media.duration);
+    if (Math.abs(media.currentTime - target) <= 0.5 && !media.seeking && (!pendingResume.attempted || confirmedSeek)) {
+      appliedResumeKey = pendingResume.key;
+      pendingResume = null;
+      return;
+    }
+    if (pendingResume.attempted && (media.seeking || (Math.abs(media.currentTime - target) <= 0.5 && !confirmedSeek))) return;
+    // Set before assigning: a deterministic test media element can emit seeked synchronously.
+    pendingResume.attempted = true;
+    try { media.currentTime = target; } catch { pendingResume.attempted = false; }
+  }
+  function restorePlayback(resume) {
+    if (!resume || !VIDEO_ID.test(resume.id || '') || !Number.isFinite(resume.position) || resume.position < 0 || resume.position > 31536000) return false;
+    const key = resume.id + ':' + resume.position;
+    if (key === appliedResumeKey || key === pendingResume?.key) return true;
+    pendingResume = {id:resume.id, position:resume.position, key, attempted:false};
+    applyResume();
+    return true;
+  }
+  function adoptPlayback(adoption) {
+    if (!trackPlayback || !adoption || typeof adoption.session !== 'string' || !adoption.session.trim() || !VIDEO_ID.test(adoption.id || '') || adoption.id !== parseLink(location.href)?.id || !Number.isFinite(adoption.position) || adoption.position < 0 || adoption.position > 31536000) return false;
+    // URL observation and didFinish may both adopt the same restored document.
+    // A generation represents one restoration intent; never seek it twice.
+    if (playbackSession === adoption.session) return true;
+    playbackSession = adoption.session;
+    boundMedia = null; boundVideoID = null; awaitingMetadata = false;
+    pendingResume = null; appliedResumeKey = null;
+    lastProgressTime = -Infinity; lastProgress = '';
+    const restored = restorePlayback({id:adoption.id, position:adoption.position});
+    reportPlayback(true);
+    return restored;
+  }
+  function playbackSnapshot() {
+    if (!trackPlayback) return null;
+    const media = mainVideo();
+    const id = parseLink(location.href)?.id;
+    bindMedia(media);
+    if (!id || boundVideoID !== id || awaitingMetadata || pendingResume || unavailablePlayback(media) || media.readyState < 2 || media.seeking || !Number.isFinite(media.currentTime) || media.currentTime < 0) return null;
+    return {id, position:Math.min(media.currentTime, media.duration), duration:media.duration, ended:Boolean(media.ended), ...(playbackSession === undefined ? {} : {session:playbackSession})};
+  }
+  function reportPlayback(force = false, ended = false) {
+    const snapshot = playbackSnapshot();
+    if (!snapshot) return;
+    if (ended) snapshot.ended = true;
+    const now = Date.now();
+    const serialized = JSON.stringify(snapshot);
+    if (!force && now - lastProgressTime < 5000) return;
+    if (force && serialized === lastProgress && now - lastProgressTime < 500) return;
+    lastProgressTime = now; lastProgress = serialized;
+    post('playback', snapshot);
+  }
+  function playbackEvent(event) {
+    if (!trackPlayback || event.target !== mainVideo()) return;
+    if (event.type === 'emptied') { boundVideoID = null; awaitingMetadata = true; return; }
+    bindMedia(event.target, event.type === 'loadedmetadata');
+    applyResume(['seeked', 'canplay', 'timeupdate'].includes(event.type));
+    // A seek can finish after a pause/background flush; persist its final position too.
+    reportPlayback(event.type === 'pause' || event.type === 'ended' || (event.type === 'seeked' && event.target.paused), event.type === 'ended');
+  }
+  for (const name of ['loadedmetadata', 'canplay', 'timeupdate', 'seeked', 'pause', 'ended', 'emptied']) document.addEventListener(name, playbackEvent, true);
+  window.addEventListener('pagehide', () => reportPlayback(true));
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') reportPlayback(true); });
   function checkRoute() {
     if (!shortsEnabled && isShortRoute(location.href)) {
       post('blockedShort');
@@ -285,16 +480,24 @@
     scheduleScan();
   }
   document.addEventListener('click', event => {
-    const anchor = event.target.closest?.('a[href]');
-    if (!shortsEnabled && ((anchor && isShortRoute(anchor.href)) || event.target.closest?.('[data-iurub-short],.pivot-shorts'))) {
-      event.preventDefault(); event.stopImmediatePropagation(); post('blockedShort');
+    const target = event.target;
+    const anchor = target.closest?.('a[href]');
+    if (!shortsEnabled && ((anchor && isShortRoute(anchor.href)) || target.closest?.('[data-iurub-short],.pivot-shorts'))) {
+      event.preventDefault(); event.stopImmediatePropagation(); post('blockedShort'); return;
     }
+    if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.button > 0 || target.closest?.('.iurub-save,.iurub-remove,button,[role="button"],[role="menuitem"]')) return;
+    if (anchor && routeVideo(anchor.href, anchor)) { event.preventDefault(); event.stopImmediatePropagation(); }
   }, true);
   for (const method of ['pushState', 'replaceState']) {
     const original = history[method];
     history[method] = function(state, title, url) {
       if (url && !shortsEnabled && isShortRoute(url)) { post('blockedShort'); return; }
+      if (url && routeVideo(url)) return;
+      const previousID = parseLink(location.href)?.id;
+      const nextID = url ? parseLink(new URL(url, location.href).href)?.id : previousID;
+      if (trackPlayback && previousID !== nextID) reportPlayback(true);
       const result = original.apply(this, arguments);
+      if (previousID !== nextID) { boundVideoID = null; awaitingMetadata = true; lastProgressTime = -Infinity; lastProgress = ''; }
       scheduleScan();
       return result;
     };
@@ -305,19 +508,26 @@
   document.addEventListener('yt-page-data-updated', scheduleScan);
   window.iurub = {
     configure(config) {
-      shortsEnabled = Boolean(config.shortsEnabled);
-      savedIDs = new Set(config.savedIDs || []);
+      if ('shortsEnabled' in config) shortsEnabled = Boolean(config.shortsEnabled);
+      if ('savedIDs' in config) savedIDs = new Set(config.savedIDs || []);
+      if ('routeVideoOpens' in config) routeVideoOpens = Boolean(config.routeVideoOpens);
+      if ('trackPlayback' in config) trackPlayback = Boolean(config.trackPlayback);
+      if (config.resume) restorePlayback(config.resume);
       if (document.documentElement) document.documentElement.classList.toggle('iurub-no-shorts', !shortsEnabled);
       checkRoute();
     },
     currentVideo,
+    playbackSnapshot,
+    restorePlayback,
+    adoptPlayback,
     saveCurrentToYouTube() { saveThroughYouTube(null, currentVideo(), null); },
-    pause() { document.querySelectorAll('video,audio').forEach(media => media.pause()); }
+    pause() { reportPlayback(true); document.querySelectorAll('video,audio').forEach(media => media.pause()); }
   };
   if (document.documentElement) {
     document.documentElement.classList.toggle('iurub-no-shorts', !shortsEnabled);
     installStyle();
   }
+  if (initial.resume) restorePlayback(initial.resume);
   const observer = new MutationObserver(scheduleScan);
   observer.observe(document, { childList:true, subtree:true, attributes:true, attributeFilter:['href'] });
   document.addEventListener('DOMContentLoaded', checkRoute, { once:true });

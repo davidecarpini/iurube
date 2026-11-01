@@ -11,6 +11,7 @@ struct BrowserPane: View {
     var onSave: ((SavedVideo) -> Void)? = nil
     @State private var feedback: String?
     @State private var safariURL: IdentifiedURL?
+    @State private var summaryVideo: SavedVideo?
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -33,13 +34,26 @@ struct BrowserPane: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if let video = session.currentVideo {
                     let saved = session.saveDestination == .device && library.contains(video.id)
-                    Button(action: session.saveCurrent) {
-                        Label(session.saveDestination == .youtube ? "Guarda più tardi" : (saved ? "Salvato sul dispositivo" : "Salva sul dispositivo"), systemImage: saved ? "bookmark.fill" : "bookmark")
-                            .font(.subheadline.weight(.semibold))
-                            .frame(maxWidth: .infinity).padding(.vertical, 14)
+                    HStack(spacing: 10) {
+                        Button(action: session.saveCurrent) {
+                            Image(systemName: saved ? "bookmark.fill" : "bookmark")
+                                .font(.headline).frame(width: 44, height: 44)
+                        }
+                        .disabled(saved)
+                        .accessibilityLabel(session.saveDestination == .youtube ? "Guarda più tardi" : (saved ? "Salvato sul dispositivo" : "Salva sul dispositivo"))
+                        .accessibilityIdentifier("saveCurrentVideo")
+                        Button {
+                            session.pause()
+                            summaryVideo = video
+                        } label: {
+                            Label("Riassunto", systemImage: "sparkles")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity).frame(minHeight: 44)
+                                .background(Theme.accent.opacity(0.1), in: Capsule())
+                        }
+                        .accessibilityIdentifier("summaryButton")
                     }
-                    .disabled(saved)
-                    .accessibilityIdentifier("saveCurrentVideo")
+                    .padding(.horizontal, 16).padding(.vertical, 8)
                     .background(.regularMaterial)
                 }
             }
@@ -80,6 +94,7 @@ struct BrowserPane: View {
                 }
                 Button("Annulla", role: .cancel) { session.externalURL = nil }
             } message: { Text(session.externalURL?.host ?? "Link esterno a YouTube") }
+            .sheet(item: $summaryVideo) { video in VideoSummaryView(video: video) }
             #if os(iOS)
             .sheet(item: $safariURL) { item in SafariView(url: item.url).ignoresSafeArea() }
             #endif

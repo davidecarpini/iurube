@@ -6,6 +6,7 @@ import WebKit
 @MainActor
 final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
     enum SaveDestination: String { case device, youtube }
+    enum Role { case browse, player }
     enum StartPage: String, CaseIterable {
         case home, watchLater, subscriptions, history, you
         var url: URL {
@@ -20,6 +21,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
             return URL(string: "https://m.youtube.com" + path)!
         }
     }
+    let role: Role
     let saveDestination: SaveDestination
     let startPage: StartPage
     @Published private(set) var isLoading = false
@@ -31,6 +33,26 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     @Published private(set) var saveFeedback: String?
     private(set) var webView: WKWebView!
     var onSave: ((SavedVideo) -> Void)?
+    var onOpenVideo: ((SavedVideo, Double?) -> Void)? {
+        didSet {
+            installScripts()
+            webView.evaluateJavaScript("window.iurub?.configure(\(configurationJSON));", completionHandler: nil)
+        }
+    }
+    var onPlayback: ((String, Double, Double, Bool) -> Void)?
+    var onMetadata: ((SavedVideo) -> Void)?
+    var onRestoreVideo: ((SavedVideo) -> PlaybackRecord)?
+    private var resumeTarget: [String: Any]?
+    private var lastPlayback: [String: Any]?
+    private var lastBrowseURL: URL?
+    private var activePlaybackID: String?
+    private var playbackSession = UUID().uuidString
+    private var navigationGeneration = UUID()
+    private var pendingHistoryAdoption: [String: Any]?
+    #if DEBUG
+    private var pausedLiveProbe = false
+    #endif
+
     private var shortsEnabled = false
     private var savedIDs: [String] = []
     private var observers: [NSKeyValueObservation] = []
@@ -38,7 +60,8 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     private var lastURL: URL = URL(string: "https://m.youtube.com/")!
     private(set) var hasLoaded = false
 
-    init(startPage: StartPage = .home, saveDestination: SaveDestination = .device) {
+    init(startPage: StartPage = .home, saveDestination: SaveDestination = .device, role: Role = .browse) {
+        self.role = role
         self.startPage = startPage
         self.saveDestination = saveDestination
         super.init()
@@ -90,12 +113,17 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         webView.evaluateJavaScript("window.iurub?.configure(\(configurationJSON));", completionHandler: nil)
         if !shortsEnabled, let url = webView.url, Self.isShortURL(url) {
             pause()
-            home()
+            if role == .browse { home() } else { webView.stopLoading() }
         }
     }
 
     private var configurationJSON: String {
-        let data = try! JSONSerialization.data(withJSONObject: ["shortsEnabled": shortsEnabled, "savedIDs": savedIDs, "saveDestination": saveDestination.rawValue, "startPage": startPage.rawValue])
+        var config: [String: Any] = ["shortsEnabled": shortsEnabled, "savedIDs": savedIDs,
+            "saveDestination": saveDestination.rawValue, "startPage": startPage.rawValue,
+            "routeVideoOpens": role == .browse && onOpenVideo != nil, "trackPlayback": role == .player,
+            "playbackSession": playbackSession]
+        if let resumeTarget { config["resume"] = resumeTarget }
+        let data = try! JSONSerialization.data(withJSONObject: config)
         return String(decoding: data, as: UTF8.self)
     }
 
@@ -125,6 +153,10 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     func openStartPage() {
         #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--summary-live"), startPage == .watchLater {
+            load(URL(string: "https://m.youtube.com/watch?v=jNQXAC9IVRw")!)
+            return
+        }
         if ProcessInfo.processInfo.arguments.contains("--fixture") {
             loadFixture()
             return
@@ -152,16 +184,140 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
             notice = "Gli Shorts sono disattivati. Puoi abilitarli nelle impostazioni."
             return
         }
+        if let link = VideoLink.parse(url.absoluteString), role == .browse, let onOpenVideo {
+            onOpenVideo(SavedVideo(link: link), PlaybackRecord.startTime(in: url))
+            return
+        }
+        navigationGeneration = UUID()
+        pendingHistoryAdoption = nil
         hasLoaded = true
-        currentVideo = VideoLink.parse(url.absoluteString).map { SavedVideo(link: $0) }
+        if let link = VideoLink.parse(url.absoluteString) {
+            if currentVideo?.id != link.id { currentVideo = SavedVideo(link: link) }
+        } else { currentVideo = nil }
         loadError = nil
         lastURL = url
+        isLoading = true
         webView.load(URLRequest(url: url))
     }
 
-    func back() { if webView.canGoBack { webView.goBack() } }
+    func loadVideo(_ video: SavedVideo, position: Double) {
+        guard VideoLink.validID(video.id), shortsEnabled || !video.isShort else { return }
+        let seconds = position.isFinite ? min(PlaybackRecord.maximumTime, max(0, position)) : 0
+        pendingHistoryAdoption = nil
+        resumeTarget = ["id": video.id, "position": seconds]
+        activePlaybackID = video.id
+        #if DEBUG
+        pausedLiveProbe = false
+        #endif
+        playbackSession = UUID().uuidString
+        navigationGeneration = UUID()
+        lastPlayback = nil
+        currentVideo = video
+        installScripts()
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--fixture") {
+            loadPlaybackFixture(video)
+            return
+        }
+        #endif
+        var components = URLComponents(url: video.url, resolvingAgainstBaseURL: false)!
+        if seconds > 0 {
+            var items = components.queryItems ?? []
+            items.append(URLQueryItem(name: "t", value: "\(Int(seconds))s"))
+            components.queryItems = items
+        }
+        if let url = components.url { load(url) }
+    }
+
+    func captureProgress(completion: (() -> Void)? = nil) {
+        guard role == .player, hasLoaded else { completion?(); return }
+        let generation = navigationGeneration
+        webView.evaluateJavaScript("window.iurub?.playbackSnapshot();") { [weak self] value, _ in
+            if let self, self.navigationGeneration == generation, let body = value as? [String: Any] {
+                self.acceptPlayback(body)
+            }
+            completion?()
+        }
+    }
+
+    private func acceptPlayback(_ body: [String: Any]) {
+        guard role == .player, let id = body["id"] as? String, VideoLink.validID(id),
+              id == activePlaybackID, body["session"] as? String == playbackSession,
+              VideoLink.parse(webView.url?.absoluteString ?? "")?.id == id,
+              let position = body["position"] as? Double, let duration = body["duration"] as? Double,
+              PlaybackRecord.validTime(position), PlaybackRecord.validTime(duration), duration > 0 else { return }
+        lastPlayback = body
+        onPlayback?(id, position, duration, body["ended"] as? Bool ?? false)
+        #if DEBUG
+        // The opt-in live probe pauses only after the real site's media confirms
+        // a restored position, so the short test video cannot end before relaunch.
+        if !pausedLiveProbe, ProcessInfo.processInfo.arguments.contains("--playback-live"),
+           ProcessInfo.processInfo.arguments.contains("--pause-restored-video") {
+            pausedLiveProbe = true
+            webView.pauseAllMediaPlayback(completionHandler: nil)
+            webView.evaluateJavaScript("window.iurub?.pause();", completionHandler: nil)
+        }
+        #endif
+    }
+
+    // A WebKit history traversal must remain a traversal. Loading the destination
+    // again would append it and make successive Back taps alternate between videos.
+    private func prepareHistoryNavigation(to url: URL) {
+        navigationGeneration = UUID()
+        playbackSession = UUID().uuidString
+        lastPlayback = nil
+        pendingHistoryAdoption = nil
+        if let link = VideoLink.parse(url.absoluteString) {
+            let metadata = currentVideo?.id == link.id ? currentVideo! : SavedVideo(link: link)
+            // Ignore stale t= parameters stored in history; resume the latest bookmark.
+            let record = onRestoreVideo?(metadata) ?? PlaybackRecord(video: metadata, position: 0, duration: nil, completed: false, updatedAt: Date())
+            activePlaybackID = link.id
+            currentVideo = record.video
+            resumeTarget = ["id": link.id, "position": record.position]
+            pendingHistoryAdoption = ["id": link.id, "position": record.position, "session": playbackSession]
+        } else {
+            activePlaybackID = nil
+            currentVideo = nil
+            resumeTarget = nil
+        }
+        installScripts()
+    }
+
+    private func adoptHistoryDocumentIfReady() {
+        guard let adoption = pendingHistoryAdoption,
+              let id = adoption["id"] as? String,
+              VideoLink.parse(webView.url?.absoluteString ?? "")?.id == id,
+              let data = try? JSONSerialization.data(withJSONObject: adoption) else { return }
+        let generation = navigationGeneration
+        let json = String(decoding: data, as: UTF8.self)
+        // A restored bfcache document still has its old immutable configuration.
+        // The bridge adopts this generation only when its own URL matches the target.
+        webView.evaluateJavaScript("window.iurub?.adoptPlayback(\(json));") { [weak self] value, _ in
+            guard let self, self.navigationGeneration == generation else { return }
+            if value as? Bool == true { self.pendingHistoryAdoption = nil }
+        }
+    }
+
+    func back() {
+        guard webView.canGoBack else { return }
+        let generation = navigationGeneration
+        captureProgress { [weak self] in
+            guard let self, self.navigationGeneration == generation, self.webView.canGoBack else { return }
+            self.webView.goBack()
+        }
+    }
     func reload() {
         loadError = nil
+        if role == .player, let video = currentVideo {
+            let generation = navigationGeneration
+            captureProgress { [weak self] in
+                guard let self, self.navigationGeneration == generation, self.currentVideo?.id == video.id else { return }
+                let lastPosition = self.lastPlayback?["id"] as? String == video.id ? self.lastPlayback?["position"] as? Double : nil
+                let position = lastPosition ?? (self.resumeTarget?["position"] as? Double) ?? 0
+                self.loadVideo(video, position: position)
+            }
+            return
+        }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--fixture") {
             let page = StartPage.allCases.first { $0.url == webView.url } ?? startPage
@@ -172,6 +328,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         if webView.url == nil { load(lastURL) } else { webView.reload() }
     }
     func pause() {
+        captureProgress()
         webView.pauseAllMediaPlayback(completionHandler: nil)
         webView.evaluateJavaScript("window.iurub?.pause();", completionHandler: nil)
     }
@@ -194,10 +351,30 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     private func urlDidChange(_ url: URL?) {
         guard let url else { currentVideo = nil; return }
-        if !shortsEnabled && Self.isShortURL(url) { home(); return }
+        if !shortsEnabled && Self.isShortURL(url) {
+            if role == .browse { home() }
+            return
+        }
         if let link = VideoLink.parse(url.absoluteString) {
-            if currentVideo?.id != link.id { currentVideo = SavedVideo(link: link) }
-        } else { currentVideo = nil }
+            if role == .browse, let onOpenVideo {
+                currentVideo = nil
+                onOpenVideo(SavedVideo(link: link), PlaybackRecord.startTime(in: url))
+                // Fallback for site navigation that bypassed both link capture and
+                // WKNavigationDelegate. Return the browsing tab to its prior page.
+                if webView.canGoBack { webView.goBack() }
+                else { webView.load(URLRequest(url: lastBrowseURL ?? startPage.url)) }
+                return
+            }
+            if role == .player, activePlaybackID != link.id {
+                let video = currentVideo?.id == link.id ? currentVideo! : SavedVideo(link: link)
+                currentVideo = video
+                onOpenVideo?(video, PlaybackRecord.startTime(in: url))
+            } else if currentVideo?.id != link.id { currentVideo = SavedVideo(link: link) }
+            adoptHistoryDocumentIfReady()
+        } else {
+            currentVideo = nil
+            if role == .browse, let host = url.host, VideoLink.isYouTubeHost(host) { lastBrowseURL = url }
+        }
     }
 
     fileprivate func receive(_ message: WKScriptMessage) {
@@ -206,6 +383,12 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
               VideoLink.isYouTubeHost(message.frameInfo.securityOrigin.host),
               let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
         switch type {
+        case "openVideo":
+            guard role == .browse, let raw = body["video"] as? [String: Any], let video = decodeVideo(raw),
+                  shortsEnabled || !video.isShort else { return }
+            let seconds = body["startSeconds"] as? Double
+            onOpenVideo?(video, seconds.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil })
+        case "playback": acceptPlayback(body)
         case "save":
             guard saveDestination == .device else { return }
             guard let raw = body["video"] as? [String: Any], let video = decodeVideo(raw) else { return }
@@ -218,6 +401,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
             if let raw = body["video"] as? [String: Any], let video = decodeVideo(raw),
                VideoLink.parse(webView.url?.absoluteString ?? "")?.id == video.id {
                 currentVideo = video
+                if role == .player { onMetadata?(video) }
             } else if VideoLink.parse(webView.url?.absoluteString ?? "") == nil {
                 currentVideo = nil
             }
@@ -272,6 +456,28 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         }
         if url.absoluteString == "about:blank" { decisionHandler(.allow); return }
         let host = url.host?.lowercased() ?? ""
+        if role == .player, navigationAction.navigationType == .backForward,
+           url.scheme == "https", VideoLink.isYouTubeHost(host) || host == "accounts.google.com" || host == "consent.google.com" {
+            let generation = navigationGeneration
+            // Read the outgoing playhead while its document is still active. After
+            // adoption, late snapshots carry the old session and are rejected.
+            captureProgress { [weak self] in
+                guard let self, self.navigationGeneration == generation else {
+                    decisionHandler(.cancel)
+                    return
+                }
+                self.prepareHistoryNavigation(to: url)
+                decisionHandler(.allow)
+            }
+            return
+        }
+        if let link = VideoLink.parse(url.absoluteString), let onOpenVideo,
+           role == .browse || link.id != currentVideo?.id ||
+            (navigationAction.navigationType == .linkActivated && PlaybackRecord.startTime(in: url) != nil) {
+            decisionHandler(.cancel)
+            onOpenVideo(SavedVideo(link: link), PlaybackRecord.startTime(in: url))
+            return
+        }
         if url.scheme == "https" && (VideoLink.isYouTubeHost(host) || host == "accounts.google.com" || host == "consent.google.com") {
             decisionHandler(.allow); return
         }
@@ -303,7 +509,25 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     #if DEBUG
+    private func loadPlaybackFixture(_ video: SavedVideo) {
+        guard let file = Bundle.main.url(forResource: "PlaybackFixture", withExtension: "html"),
+              var html = try? String(contentsOf: file, encoding: .utf8) else { return }
+        let titleData = try! JSONEncoder().encode(video.title)
+        let title = String(decoding: titleData, as: UTF8.self).replacingOccurrences(of: "<", with: "\\u003c")
+        html = html.replacingOccurrences(of: "/*IURUB_PLAYBACK_FIXTURE*/", with: "window.fixtureVideoTitle = \(title);")
+        hasLoaded = true
+        loadError = nil
+        lastURL = video.url
+        isLoading = true
+        webView.loadHTMLString(html, baseURL: video.url)
+    }
+
     private func loadFixture(page requestedPage: StartPage? = nil) {
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--summary-fixture"), let onOpenVideo {
+            hasLoaded = true
+            onOpenVideo(SavedVideo(link: VideoLink(id: "jNQXAC9IVRw", isShort: false), title: "Imparare con piccoli esercizi"), nil)
+            return
+        }
         let page = requestedPage ?? startPage
         guard let url = Bundle.main.url(forResource: "YouTubeFixture", withExtension: "html"),
               var html = try? String(contentsOf: url, encoding: .utf8) else { return }

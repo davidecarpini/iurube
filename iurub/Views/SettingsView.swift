@@ -3,7 +3,8 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @Environment(\.dismiss) private var dismiss
-    @State private var showingDeviceLibrary = false
+    @State private var showingCredentials = false
+    @State private var hasAPIKey = false
     var body: some View {
         NavigationStack {
             Form {
@@ -22,18 +23,18 @@ struct SettingsView: View {
                     Text("L’impostazione si applica subito a tutte le sezioni, alle ricerche e ai canali. I video brevi pubblicati come video normali rimangono visibili.")
                 }
                 Section {
-                    Label("La tua playlist YouTube", systemImage: "person.crop.circle")
-                    Text("Salvati mostra Guarda più tardi del tuo account YouTube. Iscrizioni, Cronologia, Esplora e Tu condividono lo stesso accesso.")
-                        .foregroundStyle(.secondary)
-                    Text("I pulsanti Guarda più tardi usano il menu di salvataggio di YouTube. Le modifiche compaiono anche negli altri dispositivi collegati allo stesso account.")
-                        .foregroundStyle(.secondary)
-                } header: { Text("Account YouTube") }
-                Section {
-                    Button { showingDeviceLibrary = true } label: {
-                        Label("Salvati sul dispositivo", systemImage: "internaldrive")
-                    }.accessibilityIdentifier("deviceLibraryButton")
-                } header: { Text("Archivio locale") } footer: {
-                    Text("I link salvati nella versione precedente rimangono qui. Sono separati dalla playlist del tuo account e non vengono trasferiti automaticamente.")
+                    Button { showingCredentials = true } label: {
+                        Label {
+                            HStack {
+                                Text("OpenRouter")
+                                Spacer()
+                                Text(hasAPIKey ? "Configurato" : "Aggiungi chiave")
+                                    .font(.subheadline).foregroundStyle(.secondary)
+                            }
+                        } icon: { Image(systemName: "sparkles").foregroundStyle(Theme.accent) }
+                    }.accessibilityIdentifier("summaryCredentialsButton")
+                } header: { Text("Riassunti con Gemini") } footer: {
+                    Text("Apri un video e tocca Riassunto per leggerlo in breve e fare domande. Le richieste usano il credito OpenRouter.")
                 }
                 Section {
                     HStack { BrandMark(); Spacer(); Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.1.0").foregroundStyle(.secondary) }
@@ -51,9 +52,61 @@ struct SettingsView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingDeviceLibrary) { DeviceLibraryScreen() }
+        .onAppear { updateCredentialStatus() }
+        .sheet(isPresented: $showingCredentials, onDismiss: updateCredentialStatus) { OpenRouterCredentialsView() }
         #if os(macOS)
         .frame(minWidth: 430, minHeight: 650)
         #endif
+    }
+
+    private func updateCredentialStatus() { hasAPIKey = (try? SummaryCredentials.read()) != nil }
+}
+
+struct OpenRouterCredentialsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var key = ""
+    @State private var error: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    SecureField("Chiave API OpenRouter", text: $key)
+                        .autocorrectionDisabled()
+                        #if os(iOS)
+                        .textInputAutocapitalization(.never)
+                        #endif
+                        .privacySensitive()
+                        .accessibilityIdentifier("openRouterKeyField")
+                    if let error { Text(error).font(.caption).foregroundStyle(.red) }
+                } header: { Text("Chiave API") } footer: {
+                    Text("La chiave viene conservata nel Portachiavi di questo dispositivo. Non viene mostrata nelle chat né inclusa nei salvataggi.")
+                }
+                Section {
+                    Text("Gemini analizza i video pubblici di YouTube tramite OpenRouter. I video privati o con limitazioni di accesso potrebbero non essere disponibili.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("OpenRouter").inlineTitle()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Annulla") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Salva") { save() }
+                        .disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("saveOpenRouterKey")
+                }
+            }
+        }
+        .onDisappear { key = "" }
+    }
+
+    private func save() {
+        do {
+            try SummaryCredentials.save(key.trimmingCharacters(in: .whitespacesAndNewlines))
+            key = ""
+            dismiss()
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 }

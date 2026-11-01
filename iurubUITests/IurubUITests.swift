@@ -9,7 +9,7 @@ final class IurubUITests: XCTestCase {
         app.launch()
     }
 
-    func testYouTubePlaylistIsFirstTabAndAccountSavePersists() throws {
+    func testYouTubePlaylistOpensByDefaultAndAccountSavePersists() throws {
         XCTAssertTrue(app.webViews.staticTexts["Guarda più tardi · account di prova"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.webViews.staticTexts["Video già salvato nell’account"].exists)
         XCTAssertFalse(app.buttons["exploreButton"].exists)
@@ -34,9 +34,11 @@ final class IurubUITests: XCTestCase {
         app.webViews.buttons["Annulla"].tap()
         XCTAssertTrue(app.webViews.staticTexts["Musica per concentrarsi"].waitForExistence(timeout: 5))
         app.buttons["settingsButton"].tap()
-        app.buttons["deviceLibraryButton"].tap()
-        XCTAssertTrue(app.buttons["addLinkButton"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["play-jfKfPfyJRdk"].exists, "Account saves must not silently write to the local archive")
+        XCTAssertTrue(app.switches["shortsToggle"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Account YouTube"].exists)
+        XCTAssertFalse(app.staticTexts["Archivio locale"].exists)
+        XCTAssertFalse(app.buttons["deviceLibraryButton"].exists)
+        capture("settings-cleaned")
     }
 
     func testShortsTogglePersistsAndRestoresShelf() throws {
@@ -68,38 +70,67 @@ final class IurubUITests: XCTestCase {
         XCTAssertFalse(app.webViews.staticTexts["Short di prova"].exists)
     }
 
-    func testLocalArchivePreservesLinksRemovalAndUndo() throws {
-        app.buttons["settingsButton"].tap()
-        app.buttons["deviceLibraryButton"].tap()
-        XCTAssertTrue(app.buttons["addLinkButton"].waitForExistence(timeout: 5))
-        app.buttons["addLinkButton"].tap()
-        let field = app.textFields["videoLinkField"]
-        field.tap(); field.typeText("https://evil.com/watch?v=jfKfPfyJRdk")
-        app.buttons["confirmAddVideo"].tap()
-        XCTAssertTrue(app.staticTexts["Inserisci un link valido a un video YouTube."].exists)
-        // Relaunch a clean add sheet to avoid depending on localized selection menus.
-        app.buttons["Annulla"].tap()
-        app.buttons["addLinkButton"].tap()
-        app.textFields["videoLinkField"].tap()
-        app.textFields["videoLinkField"].typeText("https://youtu.be/jfKfPfyJRdk")
-        app.textFields["videoTitleField"].tap()
-        app.textFields["videoTitleField"].typeText("Il mio video")
-        app.buttons["confirmAddVideo"].tap()
-        XCTAssertTrue(app.buttons["play-jfKfPfyJRdk"].waitForExistence(timeout: 5))
-        app.buttons["options-jfKfPfyJRdk"].tap()
-        app.buttons["Rimuovi dalla lista"].tap()
-        XCTAssertTrue(app.buttons["exploreButton"].waitForExistence(timeout: 5))
-        app.buttons["undoRemove"].tap()
-        XCTAssertTrue(app.buttons["play-jfKfPfyJRdk"].waitForExistence(timeout: 5))
+    func testVideoSummaryChatPersistsAcrossReopenAndRestart() throws {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--reset-state", "--fixture", "--summary-fixture"]
+        app.launch()
+        XCTAssertTrue(app.buttons["summaryButton"].waitForExistence(timeout: 10))
+        app.buttons["summaryButton"].tap()
+        let replies = app.staticTexts.matching(identifier: "summaryReply")
+        XCTAssertTrue(replies.firstMatch.waitForExistence(timeout: 10))
+        let initialSummary = replies.firstMatch.label
+        XCTAssertFalse(initialSummary.isEmpty)
+        capture("summary-initial")
+        let input = app.descendants(matching: .any).matching(identifier: "summaryInput").firstMatch
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        input.tap()
+        input.typeText("Quali sono i punti principali?")
+        app.buttons["sendSummaryQuestion"].tap()
+        XCTAssertTrue(replies.element(boundBy: 1).waitForExistence(timeout: 10))
+        let followUp = replies.element(boundBy: 1).label
+        XCTAssertFalse(followUp.isEmpty)
+        capture("summary-follow-up")
+        app.buttons["closeSummary"].tap()
+        app.buttons["summaryButton"].tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == %@", followUp)).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(replies.count, 2, "Reopening a saved chat must not regenerate the summary")
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--fixture", "--summary-fixture"]
+        app.launch()
+        XCTAssertTrue(app.buttons["summaryButton"].waitForExistence(timeout: 10))
+        app.buttons["summaryButton"].tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == %@", followUp)).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(replies.count, 2)
+        capture("summary-restored")
     }
 
-    func testFourTabsToolbarProfileAndPageRefresh() throws {
+    func testVideoSummaryCanRetryAfterFailure() throws {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--reset-state", "--fixture", "--summary-fixture", "--summary-error-once"]
+        app.launch()
+        XCTAssertTrue(app.buttons["summaryButton"].waitForExistence(timeout: 10))
+        app.buttons["summaryButton"].tap()
+        XCTAssertTrue(app.buttons["summaryRetry"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts["summaryReply"].exists)
+        capture("summary-error")
+        app.buttons["closeSummary"].tap()
+        app.buttons["summaryButton"].tap()
+        XCTAssertTrue(app.buttons["summaryRetry"].waitForExistence(timeout: 5), "Reopening a failed chat must not automatically issue another paid request")
+        XCTAssertFalse(app.staticTexts["summaryReply"].exists)
+        app.buttons["summaryRetry"].tap()
+        XCTAssertTrue(app.staticTexts["summaryReply"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["summaryRetry"].exists)
+        capture("summary-retry-success")
+    }
+
+    func testFiveTabsToolbarProfileAndPageRefresh() throws {
         XCTAssertTrue(app.webViews.staticTexts["Guarda più tardi · account di prova"].waitForExistence(timeout: 10))
-        let labels = ["Salvati", "Iscrizioni", "Cronologia", "Esplora"]
+        let labels = ["In corso", "Salvati", "Iscrizioni", "Cronologia", "Esplora"]
         let buttons = labels.map { app.tabBars.buttons[$0] }
-        XCTAssertEqual(app.tabBars.buttons.count, 4)
+        XCTAssertEqual(app.tabBars.buttons.count, 5)
         for button in buttons { XCTAssertTrue(button.exists) }
-        for index in 0..<3 { XCTAssertLessThan(buttons[index].frame.midX, buttons[index + 1].frame.midX) }
+        for index in 0..<4 { XCTAssertLessThan(buttons[index].frame.midX, buttons[index + 1].frame.midX) }
+        XCTAssertTrue(app.tabBars.buttons["Salvati"].isSelected)
         XCTAssertFalse(app.buttons["refreshWatchLater"].exists)
         XCTAssertFalse(app.buttons["youtubeHome"].exists)
         XCTAssertLessThan(app.buttons["backButton"].frame.midX, app.buttons["refreshPage"].frame.midX)
@@ -120,9 +151,65 @@ final class IurubUITests: XCTestCase {
         // The real profile -> Back path is covered by the live test below.
         app.buttons["refreshPage"].tap()
         XCTAssertTrue(app.webViews.staticTexts["Tu · fixture di test"].waitForExistence(timeout: 10), "Refresh must reload the current page, not reset to a tab's root")
+        for (tab, rootHeading) in [
+            ("Salvati", "Guarda più tardi · account di prova"),
+            ("Iscrizioni", "Iscrizioni · fixture di test"),
+            ("Cronologia", "Cronologia · fixture di test"),
+            ("Esplora", "Home · fixture di test")
+        ] {
+            app.tabBars.buttons[tab].tap()
+            app.buttons["profileButton"].tap()
+            XCTAssertTrue(app.webViews.staticTexts["Tu · fixture di test"].waitForExistence(timeout: 10))
+            app.tabBars.buttons[tab].tap()
+            XCTAssertTrue(app.webViews.staticTexts[rootHeading].waitForExistence(timeout: 10), "Tapping the selected tab must return to that section's root")
+        }
+        capture("five-tabs-navigation")
+    }
+
+    func testInProgressResumesAcrossTabsRestartAndDifferentVideos() throws {
+        XCTAssertTrue(app.tabBars.buttons["Salvati"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.tabBars.buttons["Salvati"].isSelected)
+        app.tabBars.buttons["In corso"].tap()
+        XCTAssertTrue(app.staticTexts["Un video alla volta"].waitForExistence(timeout: 5))
+        app.buttons["inProgressAction"].tap()
+        let firstVideo = app.webViews.staticTexts["Video già salvato nell’account"]
+        XCTAssertTrue(firstVideo.waitForExistence(timeout: 10))
+        firstVideo.tap()
+        let seek = app.webViews.buttons["Avanza a 42 secondi"]
+        XCTAssertTrue(seek.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.tabBars.buttons["In corso"].isSelected)
+        seek.tap()
+        XCTAssertTrue(app.webViews.staticTexts["Posizione: 42 s"].waitForExistence(timeout: 5))
+        capture("in-progress-42-seconds")
+        app.tabBars.buttons["Salvati"].tap()
+        XCTAssertTrue(firstVideo.waitForExistence(timeout: 10))
+        app.tabBars.buttons["In corso"].tap()
+        XCTAssertTrue(app.webViews.staticTexts["Posizione: 42 s"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["In corso"].tap()
+        XCTAssertTrue(app.webViews.staticTexts["Posizione: 42 s"].waitForExistence(timeout: 5), "Retapping In corso must preserve the playhead")
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--fixture"]
+        app.launch()
+        XCTAssertTrue(app.webViews.staticTexts["Posizione: 42 s"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.tabBars.buttons["In corso"].isSelected)
+        capture("in-progress-restored")
         app.tabBars.buttons["Esplora"].tap()
-        XCTAssertTrue(app.webViews.staticTexts["Home · fixture di test"].waitForExistence(timeout: 10))
-        capture("four-tabs-navigation")
+        let secondVideo = app.webViews.staticTexts["Musica per concentrarsi"]
+        XCTAssertTrue(secondVideo.waitForExistence(timeout: 10))
+        secondVideo.tap()
+        XCTAssertTrue(app.webViews.staticTexts["Posizione: 0 s"].waitForExistence(timeout: 10), "A different video must not inherit the previous playhead")
+        XCTAssertTrue(app.tabBars.buttons["In corso"].isSelected)
+        app.tabBars.buttons["Salvati"].tap()
+        XCTAssertTrue(firstVideo.waitForExistence(timeout: 10))
+        firstVideo.tap()
+        XCTAssertTrue(app.webViews.staticTexts["Posizione: 42 s"].waitForExistence(timeout: 10), "Each video restores its own bookmark")
+        app.webViews.buttons["Termina video"].tap()
+        XCTAssertTrue(app.webViews.staticTexts["Posizione: 300 s"].waitForExistence(timeout: 5))
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--fixture"]
+        app.launch()
+        XCTAssertTrue(firstVideo.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.tabBars.buttons["Salvati"].isSelected, "A completed video must not automatically resume on launch")
     }
 
     private func capture(_ name: String) {
@@ -135,15 +222,113 @@ final class IurubUITests: XCTestCase {
 
 // Opt-in, read-only verification using the existing YouTube login.
 final class IurubLiveUITests: XCTestCase {
+    func testRealVideoResumeAfterRestart() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_PLAYBACK_LIVE"] == "1", "Requires public YouTube playback")
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        var previousUpdate = 0.0
+        func currentRecord() -> [String: Any]? {
+            let status = app.staticTexts["livePlaybackStatus"]
+            guard status.exists, let data = status.label.data(using: .utf8) else { return nil }
+            return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        }
+        func confirmedRecord() -> [String: Any]? {
+            guard let record = currentRecord(),
+                  let video = record["video"] as? [String: Any], video["id"] as? String == "jNQXAC9IVRw",
+                  let position = record["position"] as? Double, abs(position - 8) < 1,
+                  let duration = record["duration"] as? Double, (18...25).contains(duration),
+                  let updated = record["updatedAt"] as? Double, updated > previousUpdate,
+                  record["completed"] as? Bool == false else { return nil }
+            return record
+        }
+        for phase in ["first", "restored"] {
+            app.launchArguments = ["--playback-live", "--pause-restored-video"]
+            if phase == "first" { app.launchArguments.append("--start-video-at-8") }
+            app.launch()
+            XCTAssertTrue(app.tabBars.buttons["In corso"].waitForExistence(timeout: 15))
+            XCTAssertTrue(app.tabBars.buttons["In corso"].isSelected)
+            if phase == "restored", let updated = currentRecord()?["updatedAt"] as? Double {
+                previousUpdate = max(previousUpdate, updated)
+            }
+            let play = app.webViews.buttons.matching(NSPredicate(format: "label == 'Riproduci' OR label == 'Play'")).firstMatch
+            XCTAssertTrue(play.waitForExistence(timeout: 30))
+            var confirmed = false
+            // YouTube can expose the thumbnail's Play before its player has
+            // finished loading. Retry that visible control, never synthesize progress.
+            for _ in 0..<3 {
+                if play.exists && play.isHittable { play.tap() }
+                let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in confirmedRecord() != nil }, object: nil)
+                if XCTWaiter.wait(for: [ready], timeout: 10) == .completed { confirmed = true; break }
+            }
+            if !confirmed { capture("youtube-playback-loading-timeout", app: app) }
+            XCTAssertTrue(confirmed, "The real media element must confirm its duration and restored position")
+            let record = try XCTUnwrap(confirmedRecord())
+            previousUpdate = try XCTUnwrap(record["updatedAt"] as? Double)
+            let evidence = XCTAttachment(data: try JSONSerialization.data(withJSONObject: record, options: [.prettyPrinted, .sortedKeys]), uniformTypeIdentifier: "public.json")
+            evidence.name = "youtube-playback-\(phase)-actual-media"
+            evidence.lifetime = .keepAlways
+            add(evidence)
+            capture("youtube-in-progress-\(phase)", app: app)
+            if phase == "restored" {
+                app.buttons["profileButton"].tap()
+                XCTAssertTrue(app.webViews.staticTexts["Cronologia"].firstMatch.waitForExistence(timeout: 30))
+                XCTAssertTrue(app.buttons["backButton"].isEnabled)
+                app.buttons["backButton"].tap()
+                XCTAssertTrue(app.buttons["summaryButton"].waitForExistence(timeout: 30))
+                let root = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == false"), object: app.buttons["backButton"])
+                XCTAssertEqual(XCTWaiter.wait(for: [root], timeout: 10), .completed,
+                               "Back must traverse the existing history instead of appending another video page")
+                let resumed = try XCTUnwrap(currentRecord()?["position"] as? Double)
+                XCTAssertEqual(resumed, 8, accuracy: 1)
+                capture("youtube-player-after-back", app: app)
+            }
+            app.terminate()
+        }
+    }
+
+    // Opt-in: uses the configured OpenRouter account for one short public video.
+    func testRealVideoSummaryAndGroundedFollowUp() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_SUMMARY_LIVE"] == "1", "Requires a configured OpenRouter key")
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--summary-live"]
+        app.launch()
+        XCTAssertTrue(app.buttons["summaryButton"].waitForExistence(timeout: 30))
+        capture("gemini-video-button", app: app)
+        app.buttons["summaryButton"].tap()
+        let replies = app.staticTexts.matching(identifier: "summaryReply")
+        XCTAssertTrue(replies.firstMatch.waitForExistence(timeout: 180))
+        capture("gemini-live-summary", app: app)
+        let input = app.descendants(matching: .any).matching(identifier: "summaryInput").firstMatch
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        input.tap()
+        input.typeText("Quale caratteristica degli elefanti viene descritta?")
+        app.buttons["sendSummaryQuestion"].tap()
+        let stop = app.buttons["cancelSummary"]
+        XCTAssertTrue(stop.waitForExistence(timeout: 10))
+        let finished = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: stop)
+        XCTAssertEqual(XCTWaiter.wait(for: [finished], timeout: 180), .completed)
+        XCTAssertFalse(app.buttons["summaryRetry"].exists, "The live provider request must complete successfully")
+        let answer = try XCTUnwrap(replies.allElementsBoundByIndex.last?.label).lowercased()
+        XCTAssertTrue(answer.contains("elefant") || answer.contains("proboscid"), "The follow-up must discuss the actual elephants in the video")
+        capture("gemini-live-follow-up", app: app)
+        app.buttons["closeSummary"].tap()
+    }
+
     func testExistingYouTubeWatchLater() throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_LIVE"] == "1", "Requires a YouTube session")
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = []
         app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Salvati"].waitForExistence(timeout: 10))
+        app.tabBars.buttons["Salvati"].tap()
         XCTAssertTrue(app.buttons["refreshPage"].waitForExistence(timeout: 10))
-        let heading = app.webViews.staticTexts.matching(NSPredicate(format: "label == %@ OR label == %@", "Guarda più tardi", "Watch later")).firstMatch
-        XCTAssertTrue(heading.waitForExistence(timeout: 30))
+        let playlistRow = app.webViews.buttons["Rimuovi da Guarda più tardi"].firstMatch
+        XCTAssertTrue(playlistRow.waitForExistence(timeout: 30))
+        XCTAssertTrue(playlistRow.isHittable)
+        XCTAssertLessThan(playlistRow.frame.minY, app.webViews.firstMatch.frame.minY + 220,
+                          "The first video must be near the top, without a large playlist hero")
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "youtube-account-watch-later"
         screenshot.lifetime = .keepAlways
@@ -160,7 +345,7 @@ final class IurubLiveUITests: XCTestCase {
         app.tabBars.buttons["Esplora"].tap()
         XCTAssertTrue(app.buttons["refreshPage"].waitForExistence(timeout: 10))
         app.tabBars.buttons["Salvati"].tap()
-        XCTAssertTrue(heading.waitForExistence(timeout: 30))
+        XCTAssertTrue(playlistRow.waitForExistence(timeout: 30))
         XCTAssertGreaterThanOrEqual(app.webViews.firstMatch.frame.maxY, app.frame.maxY - 1)
         XCTAssertFalse(app.webViews.buttons["Home"].exists)
         XCTAssertFalse(app.webViews.buttons["Tu"].exists)
@@ -169,7 +354,7 @@ final class IurubLiveUITests: XCTestCase {
         XCTAssertTrue(app.buttons["backButton"].isEnabled)
         capture("youtube-tu", app: app)
         app.buttons["backButton"].tap()
-        XCTAssertTrue(heading.waitForExistence(timeout: 30))
+        XCTAssertTrue(playlistRow.waitForExistence(timeout: 30))
         for label in ["Iscrizioni", "Cronologia", "Esplora"] {
             app.tabBars.buttons[label].tap()
             XCTAssertTrue(app.buttons["refreshPage"].waitForExistence(timeout: 10))
@@ -178,8 +363,15 @@ final class IurubLiveUITests: XCTestCase {
             print("NAVIGATION \(label): \(app.webViews.staticTexts.allElementsBoundByIndex.prefix(12).map(\.label))")
         }
         app.tabBars.buttons["Salvati"].tap()
-        XCTAssertTrue(heading.waitForExistence(timeout: 30))
+        XCTAssertTrue(playlistRow.waitForExistence(timeout: 30))
         capture("youtube-salvati-navigation", app: app)
+        XCTAssertFalse(app.webViews.buttons["Riproduci tutto"].exists, "The large playlist hero is hidden")
+        app.buttons["settingsButton"].tap()
+        XCTAssertTrue(app.buttons["summaryCredentialsButton"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Account YouTube"].exists)
+        XCTAssertFalse(app.staticTexts["Archivio locale"].exists)
+        capture("youtube-settings", app: app)
+        app.buttons["closeSettings"].tap()
     }
 
     private func capture(_ name: String, app: XCUIApplication) {

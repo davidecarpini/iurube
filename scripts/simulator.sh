@@ -36,7 +36,8 @@ if ! xcrun simctl list devices booted -j | python3 -c 'import json,sys; uid=sys.
   xcrun simctl boot "$simulator"
 fi
 xcrun simctl bootstatus "$simulator" -b
-args=(-project iurub.xcodeproj -scheme iurub -destination "platform=iOS Simulator,id=$simulator" -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO)
+# Ad-hoc simulator signing supplies application-identifier for Keychain access.
+args=(-project iurub.xcodeproj -scheme iurub -destination "platform=iOS Simulator,id=$simulator" -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-)
 if [[ "$action" == "test" || "$action" == "live" ]]; then
   # Give XCTest a clean launch, including after a previous normal simctl run.
   xcrun simctl terminate "$simulator" it.davidecarpini.iurub >/dev/null 2>&1 || true

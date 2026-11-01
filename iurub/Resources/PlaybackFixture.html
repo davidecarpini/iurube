@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta property="og:title" content="Video di prova"><title>Video di prova - YouTube</title>
+<style>
+body{font:16px -apple-system,BlinkMacSystemFont,sans-serif;margin:0;background:#faf8f5;color:#202020}main{padding:18px}h1{font-size:22px;line-height:1.25}video{display:block;width:100%;height:200px;background:linear-gradient(135deg,#173d45,#6e9e97);border-radius:18px}#position{font-size:21px;font-weight:600;font-variant-numeric:tabular-nums}button{display:block;width:100%;min-height:48px;margin-top:14px;padding:12px;border:0;border-radius:14px;background:#e84a38;color:white;font:600 16px -apple-system}p{line-height:1.5}.note{color:#6b6b6b;font-size:13px}
+</style></head><body><main><div id="movie_player"><video id="fixture-video" class="html5-main-video" playsinline aria-label="Player di prova"></video></div><h1 id="video-title">Video di prova</h1><p id="position" aria-live="polite">Posizione: 0 s</p><p>Durata: 300 s</p><button id="advance">Avanza a 42 secondi</button><button id="finish">Termina video</button><p class="note">Player locale per test ripetibili. Nessun video viene scaricato o riprodotto.</p></main>
+<script>
+/*IURUB_PLAYBACK_FIXTURE*/
+const title = window.fixtureVideoTitle || 'Video di prova';
+document.title = title + ' - YouTube';
+document.querySelector('meta[property="og:title"]').content = title;
+document.getElementById('video-title').textContent = title;
+const media = document.getElementById('fixture-video');
+let position = 0;
+let finished = false;
+let paused = true;
+Object.defineProperties(media, {
+  readyState:{get:()=>4},
+  duration:{get:()=>300},
+  seeking:{get:()=>false},
+  paused:{get:()=>paused},
+  ended:{get:()=>finished},
+  currentTime:{get:()=>position,set:value=>{
+    position = Math.min(300,Math.max(0,Number(value) || 0));
+    finished = position >= 300;
+    document.getElementById('position').textContent = 'Posizione: ' + Math.floor(position) + ' s';
+    media.dispatchEvent(new Event('seeked'));
+  }}
+});
+media.pause = () => { paused = true; media.dispatchEvent(new Event('pause')); };
+media.play = () => { paused = false; media.dispatchEvent(new Event('playing')); return Promise.resolve(); };
+document.getElementById('advance').onclick = () => {
+  media.currentTime = 42;
+  media.dispatchEvent(new Event('timeupdate'));
+  media.pause();
+};
+document.getElementById('finish').onclick = () => {
+  media.currentTime = 300;
+  media.dispatchEvent(new Event('timeupdate'));
+  media.pause();
+  media.dispatchEvent(new Event('ended'));
+};
+setTimeout(()=>{ media.dispatchEvent(new Event('loadedmetadata')); media.dispatchEvent(new Event('canplay')); },0);
+</script></body></html>
