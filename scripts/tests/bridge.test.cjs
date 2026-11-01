@@ -166,12 +166,12 @@ test('account button uses the YouTube menu and never writes the device library',
     assert.ok(messages.some(m => m.type === 'fixtureAccountSave' && m.id === 'jfKfPfyJRdk'));
     assert.ok(messages.some(m => m.type === 'youtubeSaveResult' && m.status === 'saved'));
     assert.equal(messages.some(m => m.type === 'save'), false);
-    assert.equal(d.querySelector('.iurub-save').dataset.saved, 'false', 'local IDs cannot claim account membership');
+    assert.equal(d.querySelector('.iurub-save').dataset.saved, 'true', 'confirmed YouTube save fills the bookmark');
   } finally { dom.window.close(); }
 });
 
-test('account save never removes an existing Watch later entry', async () => {
-  const { dom, d, w, messages } = await setup(fixture, 'https://m.youtube.com/', {saveDestination:'youtube',savedIDs:['jfKfPfyJRdk']});
+test('an unknown existing membership is observed without accidentally removing the video', async () => {
+  const { dom, d, w, messages } = await setup(fixture, 'https://m.youtube.com/', {saveDestination:'youtube'});
   try {
     w.fixtureAccountIDs = ['jfKfPfyJRdk'];
     d.querySelector('.iurub-save').click();
@@ -221,7 +221,8 @@ test('one-tap removal delegates to the matching YouTube menu and preserves Undo'
       item.onclick = () => {
         removeCalls++; first.remove(); menu.remove();
         const undo = d.createElement('button'); undo.id='youtube-undo'; undo.textContent='Annulla';
-        undo.onclick=()=>{d.body.append(first);undo.remove();}; d.body.append(undo);
+        const toast = d.createElement('div'); toast.setAttribute('role','status'); toast.textContent='Rimosso da Guarda più tardi ';
+        undo.onclick=()=>{d.body.append(first);toast.remove();}; toast.append(undo); d.body.append(toast);
       };
       menu.append(item); d.body.append(menu);
     };
@@ -232,7 +233,7 @@ test('one-tap removal delegates to the matching YouTube menu and preserves Undo'
     assert.equal(removeCalls, 1);
     assert.equal(d.getElementById('one'), null);
     assert.ok(d.getElementById('two'));
-    assert.ok(messages.some(m=>m.type==='youtubeRemoveResult' && m.status==='submitted'));
+    assert.ok(messages.some(m=>m.type==='youtubeSaveResult' && m.status==='removed' && m.saved===false));
     d.getElementById('youtube-undo').click();
     await wait();
     assert.ok(d.getElementById('one'));
@@ -255,7 +256,7 @@ test('missing removal menu does not delete the card or modify local storage', as
     d.querySelector('.iurub-remove').click();
     await wait();
     assert.ok(d.querySelector('ytm-playlist-video-renderer'));
-    assert.ok(messages.some(m=>m.type==='youtubeRemoveResult' && m.status==='manual'));
+    assert.ok(messages.some(m=>m.type==='youtubeSaveResult' && m.status==='manual'));
     assert.equal(messages.some(m=>m.type==='save'), false);
   } finally { dom.window.close(); }
 });
@@ -705,5 +706,175 @@ test('history adoption suppresses progress until the restored seek is confirmed'
     d.querySelector('video').dispatchEvent(new w.Event('seeked'));
     assert.equal(w.iurub.playbackSnapshot().position, 8);
     assert.equal(playbackMessages(messages).at(-1).session, 'back-generation');
+  } finally { dom.window.close(); }
+});
+
+const membershipMessages = messages => messages.filter(message => message.type === 'youtubeMembership');
+
+test('filled account bookmark toggles removal through YouTube and confirmed Undo restores it', async () => {
+  const { dom, d, w, messages } = await setup(fixture, 'https://m.youtube.com/', {saveDestination:'youtube',savedIDs:['jfKfPfyJRdk']});
+  try {
+    w.fixtureAccountIDs = ['jfKfPfyJRdk'];
+    const bookmark = d.querySelector('.iurub-save');
+    assert.equal(bookmark.getAttribute('aria-pressed'), 'true');
+    assert.equal(bookmark.getAttribute('aria-label'), 'Rimuovi da Guarda più tardi');
+    bookmark.click(); await wait(400);
+    assert.equal(w.fixtureAccountIDs.includes('jfKfPfyJRdk'), false);
+    assert.equal(bookmark.dataset.saved, 'false');
+    const removed = messages.find(message=>message.type==='youtubeSaveResult' && message.status==='removed');
+    assert.equal(removed.saved, false);
+    assert.equal(removed.video.id, 'jfKfPfyJRdk');
+    assert.equal(membershipMessages(messages).at(-1).saved, false);
+    d.querySelector('[role="status"] button').click(); await wait(400);
+    assert.equal(w.fixtureAccountIDs.includes('jfKfPfyJRdk'), true);
+    assert.equal(bookmark.dataset.saved, 'true');
+    assert.equal(membershipMessages(messages).at(-1).saved, true);
+    assert.equal(messages.some(message=>message.type==='save'), false);
+  } finally { dom.window.close(); }
+});
+
+test('confirmed native player toggle includes video identity and never updates the device library', async () => {
+  const html = fs.readFileSync('iurub/Resources/PlaybackFixture.html','utf8');
+  const { dom, w, messages } = await setup(html, 'https://m.youtube.com/watch?v=jfKfPfyJRdk', {saveDestination:'youtube'});
+  try {
+    w.iurub.toggleCurrentToYouTube(); await wait(400);
+    assert.equal(w.fixtureAccountIDs.includes('jfKfPfyJRdk'), true);
+    let result = messages.filter(message=>message.type==='youtubeSaveResult').at(-1);
+    assert.equal(result.status, 'saved'); assert.equal(result.saved, true);
+    assert.equal(result.video.id, 'jfKfPfyJRdk');
+    w.iurub.toggleCurrentToYouTube(); await wait(400);
+    result = messages.filter(message=>message.type==='youtubeSaveResult').at(-1);
+    assert.equal(result.status, 'removed'); assert.equal(result.saved, false);
+    assert.equal(w.fixtureAccountIDs.includes('jfKfPfyJRdk'), false);
+    assert.equal(messages.some(message=>message.type==='save'), false);
+  } finally { dom.window.close(); }
+});
+
+test('removal unchecks only Watch later and leaves other selected playlists intact', async () => {
+  const html = '<button id="save" aria-label="Save to playlist">Save</button>';
+  const { dom, d, w, messages } = await setup(html, 'https://m.youtube.com/watch?v=jfKfPfyJRdk', {saveDestination:'youtube',savedIDs:['jfKfPfyJRdk']});
+  try {
+    d.getElementById('save').onclick = () => {
+      d.body.insertAdjacentHTML('beforeend','<div role="dialog"><label><input id="later" type="checkbox" checked>Watch later</label><label><input id="other" type="checkbox" checked>Other playlist</label></div>');
+    };
+    w.iurub.toggleCurrentToYouTube(); await wait(500);
+    assert.equal(d.getElementById('later').checked, false);
+    assert.equal(d.getElementById('other').checked, true);
+    const result = messages.filter(message=>message.type==='youtubeSaveResult').at(-1);
+    assert.equal(result.status, 'removed'); assert.equal(result.saved, false);
+  } finally { dom.window.close(); }
+});
+
+test('a failed checkbox save never publishes saved=true or fills the bookmark', async () => {
+  const html = '<ytm-video-with-context-renderer><a href="/watch?v=jfKfPfyJRdk"><h3>Video</h3></a><button id="menu" aria-label="Menu Azione">Menu</button></ytm-video-with-context-renderer>';
+  const { dom, d, w, messages } = await setup(html, 'https://m.youtube.com/', {saveDestination:'youtube'});
+  try {
+    d.getElementById('menu').onclick = () => {
+      d.body.insertAdjacentHTML('beforeend','<div role="dialog"><label><input id="later" type="checkbox">Watch later</label></div>');
+      d.getElementById('later').onclick = () => w.setTimeout(()=> d.body.insertAdjacentHTML('beforeend','<div role="alert">Errore: impossibile salvare in Guarda più tardi</div>'),50);
+    };
+    d.querySelector('.iurub-save').click(); await wait(400);
+    const result = messages.filter(message=>message.type==='youtubeSaveResult').at(-1);
+    assert.equal(result.status, 'failed'); assert.equal(result.saved, undefined);
+    assert.equal(membershipMessages(messages).some(message=>message.saved), false);
+    assert.equal(d.querySelector('.iurub-save').dataset.saved, 'false');
+  } finally { dom.window.close(); }
+});
+
+test('unconfirmed action and unrelated playlist toast cannot masquerade as a saved Watch later video', async () => {
+  const html = '<ytm-video-with-context-renderer><a href="/watch?v=jfKfPfyJRdk"><h3>Video</h3></a><button id="menu" aria-label="Menu Azione">Menu</button></ytm-video-with-context-renderer>';
+  const { dom, d, messages } = await setup(html, 'https://m.youtube.com/', {saveDestination:'youtube'});
+  try {
+    d.getElementById('menu').onclick = () => {
+      d.body.insertAdjacentHTML('beforeend','<div role="dialog"><button id="action">Salva in Guarda più tardi</button></div>');
+      d.getElementById('action').onclick = () => {
+        d.querySelector('[role="dialog"]').remove();
+        d.body.insertAdjacentHTML('beforeend','<div role="status">Added to Other playlist</div>');
+      };
+    };
+    d.querySelector('.iurub-save').click(); await wait(2400);
+    const result = messages.filter(message=>message.type==='youtubeSaveResult').at(-1);
+    assert.equal(result.status, 'submitted'); assert.equal(result.saved, undefined);
+    assert.equal(membershipMessages(messages).some(message=>message.saved), false);
+    assert.equal(d.querySelector('.iurub-save').dataset.saved, 'false');
+  } finally { dom.window.close(); }
+});
+
+test('stale Watch later cards do not override shared removals, while reinserted Undo cards can confirm membership', async () => {
+  const html = '<ytm-playlist-video-renderer><a href="/watch?v=jfKfPfyJRdk"><h3>Saved video</h3></a></ytm-playlist-video-renderer>';
+  const { dom, d, w, messages } = await setup(html, 'https://m.youtube.com/playlist?list=WL', {saveDestination:'youtube'});
+  try {
+    assert.equal(membershipMessages(messages).length, 1);
+    assert.equal(membershipMessages(messages)[0].saved, true);
+    w.iurub.configure({savedIDs:[],removedIDs:['jfKfPfyJRdk']}); await wait();
+    d.body.append(d.createElement('span')); await wait();
+    assert.equal(membershipMessages(messages).length, 1, 'configure/scan of stale nodes cannot undo a removal from another tab');
+    const row = d.querySelector('ytm-playlist-video-renderer'); row.remove(); d.body.append(row); await wait();
+    assert.equal(membershipMessages(messages).length, 2);
+    assert.equal(membershipMessages(messages).at(-1).saved, true);
+    w.iurub.configure({resetMembership:true,savedIDs:[],removedIDs:[]}); await wait();
+    assert.equal(membershipMessages(messages).length, 2, 'account reset does not republish old nodes');
+  } finally { dom.window.close(); }
+});
+
+test('shared membership fills and clears account icons without treating missing IDs as evidence', async () => {
+  const { dom, d, w, messages } = await setup(fixture, 'https://m.youtube.com/', {saveDestination:'youtube'});
+  try {
+    const bookmark = d.querySelector('.iurub-save');
+    w.iurub.configure({savedIDs:['jfKfPfyJRdk']}); await wait();
+    assert.equal(bookmark.getAttribute('aria-pressed'), 'true');
+    assert.equal(w.getComputedStyle(bookmark.querySelector('svg')).fill, 'currentColor');
+    w.iurub.configure({savedIDs:[]}); await wait();
+    assert.equal(bookmark.dataset.saved, 'true', 'a partial set does not establish absence');
+    w.iurub.configure({removedIDs:['jfKfPfyJRdk']}); await wait();
+    assert.equal(bookmark.getAttribute('aria-pressed'), 'false');
+    assert.equal(membershipMessages(messages).length, 0, 'incoming configuration is not newly observed evidence');
+  } finally { dom.window.close(); }
+});
+
+test('watch page hides authenticated recommendations but preserves title, player and modern comments teaser', async () => {
+  const html = '<ytm-watch><div id="movie_player"><video></video></div><div class="watch-below-the-player"><ytm-single-column-watch-next-results-renderer><div class="related-chips-slot-wrapper"><ytm-slim-video-metadata-section-renderer><h1>Video title</h1><button>Mi piace</button></ytm-slim-video-metadata-section-renderer><ytm-item-section-renderer id="comments"><lazy-list><yt-comment-teaser-carousel-item-view-model><comments-entry-point-teaser-view-model><button id="expand-comments">Commenti</button></comments-entry-point-teaser-view-model></yt-comment-teaser-carousel-item-view-model></lazy-list></ytm-item-section-renderer></div><ytm-item-section-renderer id="recommendations" class="scwnr-content single-column-watch-next-modern-panels"><ytm-related-chip-cloud-renderer>Tutti</ytm-related-chip-cloud-renderer><div class="related-chips-sentinel"></div><lazy-list><ytm-video-with-context-renderer><a href="/watch?v=M7lc1UVf-VE"><h3>Recommended video</h3></a></ytm-video-with-context-renderer></lazy-list></ytm-item-section-renderer></ytm-single-column-watch-next-results-renderer></div></ytm-watch>';
+  const { dom, d, w } = await setup(html, 'https://m.youtube.com/watch?v=jfKfPfyJRdk');
+  try {
+    assert.equal(w.getComputedStyle(d.getElementById('recommendations')).display, 'none');
+    for (const selector of ['#movie_player','ytm-slim-video-metadata-section-renderer','.related-chips-slot-wrapper','#comments','#expand-comments']) assert.notEqual(w.getComputedStyle(d.querySelector(selector)).display, 'none');
+    let opened = false; d.getElementById('expand-comments').onclick = () => opened = true;
+    d.getElementById('expand-comments').click(); assert.equal(opened, true);
+    w.history.pushState({},'', '/'); await wait();
+    assert.notEqual(w.getComputedStyle(d.getElementById('recommendations')).display, 'none');
+    w.history.pushState({},'', '/watch?v=jfKfPfyJRdk'); await wait();
+    d.getElementById('recommendations').insertAdjacentHTML('beforeend','<ytm-video-with-context-renderer id="new-recommendation"><a href="/watch?v=aqz-KE-bpKQ">Dynamic video</a></ytm-video-with-context-renderer>'); await wait();
+    assert.equal(w.getComputedStyle(d.getElementById('recommendations')).display, 'none');
+    assert.equal(w.getComputedStyle(d.getElementById('new-recommendation')).display, 'none');
+  } finally { dom.window.close(); }
+});
+
+test('mixed watch sections retain expandable comments and never hide video links inside comment threads', async () => {
+  const html = '<ytm-item-section-renderer id="mixed"><ytm-comments-entry-point-header-renderer><button>Commenti</button></ytm-comments-entry-point-header-renderer><ytm-comment-section-renderer id="comment-thread"><ytm-video-with-context-renderer id="comment-reference"><a href="/watch?v=M7lc1UVf-VE">A cited video</a></ytm-video-with-context-renderer></ytm-comment-section-renderer><ytm-video-with-context-renderer id="recommended"><a href="/watch?v=aqz-KE-bpKQ">Suggested</a></ytm-video-with-context-renderer></ytm-item-section-renderer>';
+  const { dom, d, w } = await setup(html, 'https://m.youtube.com/watch?v=jfKfPfyJRdk');
+  try {
+    assert.notEqual(w.getComputedStyle(d.getElementById('mixed')).display, 'none');
+    assert.notEqual(w.getComputedStyle(d.getElementById('comment-thread')).display, 'none');
+    assert.notEqual(w.getComputedStyle(d.getElementById('comment-reference')).display, 'none');
+    assert.equal(w.getComputedStyle(d.getElementById('recommended')).display, 'none');
+  } finally { dom.window.close(); }
+});
+
+
+test('official account controls invalidate hints without reading credentials or treating video titles as account actions', async () => {
+  const html = '<button id="switch">Cambia account</button><button id="signout" aria-label="Sign out">Exit</button><a id="google" href="https://accounts.google.com/ServiceLogin">Google</a><a id="profile" href="/feed/library">Tu</a><a id="hostile" href="https://accounts.google.com.evil.test/signin">Example</a><ytm-video-with-context-renderer><a href="/watch?v=jfKfPfyJRdk"><h3>Accedi</h3></a></ytm-video-with-context-renderer>';
+  const { dom, d, w, messages } = await setup(html, 'https://m.youtube.com/', {saveDestination:'youtube',savedIDs:['jfKfPfyJRdk'],routeVideoOpens:true});
+  try {
+    // Prevent jsdom navigation after the capture handler; native YouTube owns navigation.
+    d.querySelectorAll('a').forEach(anchor=>anchor.addEventListener('click',event=>event.preventDefault()));
+    for (const id of ['switch','signout','google','profile']) d.getElementById(id).click();
+    assert.equal(messages.filter(message=>message.type==='youtubeAccountContextChanged').length, 4);
+    d.getElementById('hostile').click(); d.querySelector('h3').click();
+    assert.equal(messages.filter(message=>message.type==='youtubeAccountContextChanged').length, 4);
+    w.iurub.configure({resetMembership:true,savedIDs:[],removedIDs:[]}); await wait();
+    assert.equal(d.querySelector('.iurub-save').dataset.saved, 'false');
+    assert.equal(membershipMessages(messages).length, 0);
+    const event = messages.find(message=>message.type==='youtubeAccountContextChanged');
+    assert.deepEqual(Object.keys(event), ['type']);
   } finally { dom.window.close(); }
 });

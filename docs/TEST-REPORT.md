@@ -1,85 +1,60 @@
-# iurub 1.3 — In corso, ripresa e riassunti
+# iurub 1.3.1 — Commenti, segnalibri e riassunti anticipati
 
-1 novembre 2026 · progetto `/Users/davidecarpini/apps/iurub` · versione **1.3.0, build 4**.
+2 novembre 2026 · versione **1.3.1, build 5** · progetto `/Users/davidecarpini/apps/iurub`.
 
-## Modifiche consegnate
+## Modifiche
 
-- **In corso** è la prima tab, a sinistra di **Salvati**. Aprire un video lo porta nel player dedicato, conservando la pagina da cui proviene.
-- Posizione conservata separatamente per video, anche dopo cambio di tab e riavvio. All’avvio si apre l’ultimo video incompleto; altrimenti Salvati. Premi Play quando richiesto da YouTube.
-- Aprire un altro video non cancella il punto del precedente. Un secondo tocco su In corso non azzera la riproduzione; sulle altre tab torna alla pagina iniziale.
-- **Indietro** mantiene la cronologia WebKit anche nel player, senza aggiungere nuovamente la pagina di destinazione.
-- Conservate **Salvati, Iscrizioni, Cronologia, Esplora**, login condiviso, refresh, Tu in alto e webview fino al bordo inferiore.
-- **Riassunto** apre una modale chat con Gemini 2.5 Flash via OpenRouter/Google AI Studio. Domande e approfondimenti conservano il video nel contesto; ogni video mantiene la propria conversazione locale. Cache, interruzione e retry esplicito.
-- Chiave configurata nel **Portachiavi** di simulatore e iPhone. Nessuna chiave nei sorgenti, conversazioni, screenshot o ZIP. File temporanei di importazione eliminati.
-- **Segnalibro compatto** nella riga dettagli/avatar/menu e **cestino** nella colonna azioni dei salvati, senza righe aggiuntive sotto i video. Aree toccabili da 44 punti.
-- Salvati mostra direttamente la lista, senza la copertina grande. Nascondimento limitato alla playlist Guarda più tardi, inclusa la variante autenticata del sito.
-- Rimosse dalle impostazioni **Account YouTube** e **Archivio locale**; conservati dati precedenti e toggle Shorts.
+- Nella pagina video sono nascosti i suggerimenti. Player, titolo, azioni e riquadro Commenti restano visibili; il riquadro apre il pannello ufficiale di YouTube. Esplora, Iscrizioni e le playlist mantengono le loro liste.
+- Il segnalibro diventa pieno quando l’app conosce l’appartenenza a Guarda più tardi. Un secondo tocco rimuove il video. Lista e player condividono lo stato verificato; il menu ufficiale e Annulla rimangono disponibili.
+- Il riassunto parte dopo un nuovo salvataggio confermato da YouTube. La coda evita duplicati e avvia una sola richiesta automatica alla volta. Aprire la chat usa la risposta pronta o la richiesta in corso; un video ancora in coda prende priorità. La chat conserva domande e risposte esistenti.
+- Errori, chiave mancante e interruzioni non producono tentativi automatici ripetuti. L’indicatore accanto a Riassunto segnala la preparazione. Le impostazioni descrivono questo comportamento e l’uso del credito OpenRouter.
+- Gli stati della playlist restano in memoria durante la sessione. Aprendo i controlli dell’account vengono invalidati e la lista viene riletta al ritorno. Un video non ancora verificato viene esposto all’accessibilità come “da verificare”, senza dichiararlo assente.
 
-## Esiti effettivi
+## Verifiche effettive
 
 Ambiente: **Xcode 27.2 · iPhone Air · iOS 27.2**.
 
-| Verifica | Esito finale | Copertura |
-|---|---|---|
-| Swift Testing, macOS e simulatore | **32/32** | URL, preferenze, persistenza, richieste Gemini, cache/errori/cancellazione; checkpoint per video, riavvio, completamento/replay, timestamp ed eventi tardivi |
-| XCUITest con fixture | **6/6** | Cinque tab/toolbar, salva/rimuovi/Annulla, Shorts, chat/retry, In corso, cambio tab/video, riavvio e completamento |
-| XCUITest YouTube reale | **1/1** | Playlist autenticata, menu ufficiale, lista compatta, sezioni, Tu → Indietro e impostazioni |
-| XCUITest Gemini reale | **1/1** | Chat riaperta e nuova domanda sul video pubblico “Me at the zoo”; risposta sugli elefanti. Riassunto iniziale reale già verificato nella stessa sessione |
-| XCUITest ripresa reale | **1/1 dopo correzione dell’attesa del test** | Nuova posizione reale dopo riavvio, poi Tu → Indietro senza duplicare la cronologia |
-| JavaScript/jsdom | **39/39** | Playlist, Shorts, layout, navigazione verso player, timestamp, seek confermato, annunci, eventi tardivi, bfcache e Trusted Types |
-| Build Debug simulatore | **Superata** | Firma ad hoc per il Portachiavi; app riavviata normalmente senza fixture |
-| Build Release iPhone | **Superata** | Apple Development, Personal Team configurato |
-| Installazione iPhone fisico | **Superata** | iPhone di Davide, iPhone 16 Pro Max, iOS 26.6.1; versione **1.3.0 (4)** sopra l’app esistente |
+| Verifica | Esito |
+|---|---|
+| Swift, modelli | **41/41**, anche nel simulatore |
+| XCUITest con fixture | **9/9** come esito finale |
+| XCUITest commenti YouTube reale | **1/1** |
+| JavaScript/jsdom | **49/49** |
+| Build Debug simulatore | Superata |
+| Archivio Release 1.3.1 (5) | Superato; firma verificata |
+| Installazione iPhone di Davide | Superata, sopra l’app esistente |
+| Apertura automatica su iPhone | Rifiutata: dispositivo bloccato |
 
-**41 test iOS distinti superati come esito finale**, più **39 test JavaScript**. Le ripetizioni non sono sommate due volte.
+**51 test iOS distinti superati**, più **49 test JavaScript**. Le ripetizioni non sono sommate.
 
-Il player reale ha confermato **8,000 secondi prima e dopo il riavvio**, durata **19,0135 secondi**, con un nuovo aggiornamento del media dopo la riapertura. Il secondo avvio legge il checkpoint persistito, senza impostare nuovamente il tempo. Il probe Debug mette in pausa solo dopo la conferma del media; non simula tempo o durata.
+La prima suite iOS ha prodotto 47 pass e 3 errori nei selettori dei test: con `aria-pressed`, WebKit espone il segnalibro come **Switch**, mentre i test cercavano un **Button**. La gerarchia accessibile esportata conferma la causa. Corretto solo il selettore, i tre test ripetuti sono passati conservando tutte le verifiche di salvataggio, rimozione, riavvio e prefetch. Gli esiti originali sono conservati.
 
-Nella sessione live combinata playlist e Gemini sono passati; la ripresa ha incontrato il pulsante Play esposto da YouTube prima che il player fosse pronto. Il filmato mostrava ancora la schermata iniziale di caricamento. Corretto il test consentendo un nuovo tocco sul controllo visibile, la ripetizione mirata ha superato ripresa e cronologia. Il JSON originale conserva quel timeout, risolto nel risultato mirato allegato.
+La prova del riassunto anticipato verifica che la risposta esista **prima di aprire la modale**, e che riaprirla non aggiunga una seconda risposta. I test dei modelli coprono richieste duplicate, cache persistita, una sola richiesta automatica attiva, priorità manuale, errori, chiave assente, cancellazione e risposte tardive.
 
-L’installazione fisica è riuscita. **L’apertura automatica è stata rifiutata perché l’iPhone era bloccato**: apri iurub dopo averlo sbloccato. Nessun aggiramento, disinstallazione o cancellazione di cookie, playlist, dati e credenziali. Il precedente avvio fisico e l’importazione della chiave erano riusciti.
+Sul sito reale è stato aperto il video pubblico “Me at the zoo”. Il controllo strutturale conferma suggerimenti nascosti e commenti visibili. XCUITest apre e chiude il pannello ufficiale dei commenti; gli screenshot sono stati ispezionati. Nessun commento è stato pubblicato e la playlist reale non è stata modificata.
 
 ## Evidenze
 
-- `build/Tests-20261101-194303.xcresult`: **38 pass**, nessun errore o test saltato.
-- `build/Tests-20261101-194658.xcresult`: **2 pass**, timeout della prima prova di ripresa descritto sopra.
-- `build/Playback-Final-Live.xcresult`: **1 pass**, nessun errore o test saltato; ripresa e Indietro finali.
-- `work/playback-final-js.log`: **39 pass**. `work/playback-core-final.log`: **32 pass**.
-- Build/installazione fisica: `work/playback-final-iphone-build.log`, `work/playback-final-iphone-install.json`.
-- Apertura rifiutata per blocco: `work/playback-final-iphone-launch.json`.
-- `iurub-ripresa-reale.json` negli outputs conserva checkpoint e timestamp reali. Screenshot di lista, player e chat ispezionati visivamente.
+- `build/Tests-20261102-002417.xcresult`: 47 pass, 3 errori di selezione descritti sopra.
+- `build/Changes131-Bookmark-Retry.xcresult`: 3 pass, nessun errore.
+- `build/Changes131-Comments-Live.xcresult`: 1 pass, nessun errore.
+- `work/membership-watch-bridge-tests.log`: 49 pass.
+- `work/changes-131-archive.log`: ARCHIVE SUCCEEDED.
+- `work/changes-131-iphone-install.json`: installazione riuscita; `work/changes-131-iphone-launch.json`: Locked.
+- Archivio: `build/Distribution/iurub-1.3.1-5.xcarchive`. Il bridge archiviato coincide con il sorgente finale. Nessuna chiave OpenRouter incorporata nell’app.
 
-## Isolamento e limiti
+## Distribuzione e limiti
 
-Aggiunta/rimozione usano fixture e una playlist di prova. I controlli sul sito reale non aggiungono né rimuovono video dalla playlist dell’utente. La prova del player usa un archivio di checkpoint separato da quello normale. La prova Gemini usa un video pubblico di circa 19 secondi, senza coprire sistematicamente durate, lingue o tipi di video.
+**L’app è installata sull’iPhone, ma non è su TestFlight.** L’accesso automatico al sito Apple continua a essere negato dal controllo dei permessi, anche sulla pagina in cui l’utente ha effettuato il login. Il rifiuto vieta di completare lo stesso passaggio attraverso un’altra applicazione; non è stato aggirato. L’archivio usa Apple Development; firma per distribuzione e caricamento restano da completare.
 
-I checkpoint sono locali, fino a 100 video, salvati circa ogni cinque secondi e su pausa, seek, cambio sezione e background. Una chiusura improvvisa può perdere gli ultimissimi secondi. Annunci e media senza durata valida non sovrascrivono il punto del contenuto. Caricamento e disponibilità dipendono da YouTube; i video non vengono scaricati.
+L’iPhone era bloccato durante il tentativo di apertura automatica: l’utente può aprire iurub dopo lo sblocco. Non sono stati cancellati cookie, credenziali, playlist o dati precedenti.
 
-Gemini analizza il contenuto audiovisivo accessibile, senza simulare una trascrizione completa. Video privati o con restrizioni possono non essere analizzabili. Le risposte possono contenere errori. URL del video e conversazione vengono inviati a OpenRouter/Google, usando il credito dell’account.
+Il salvataggio e la rimozione remoti sono verificati tramite i controlli di YouTube, quindi dipendono dal suo DOM. Una lista caricata solo in parte non dimostra l’assenza degli altri video; lo stato ignoto viene verificato dal menu quando si agisce. I cambiamenti effettuati fuori dall’app richiedono una rilettura o verifica del menu.
 
-La suite funzionale è eseguita nel simulatore; sul telefono è verificata l’installazione, con il limite dell’ultimo avvio bloccato. Fullscreen, PiP, AirPlay, rotazione, iOS 17 e VoiceOver completo non sono stati ricollaudati in questo aggiornamento. I cambiamenti del sito possono richiedere manutenzione.
-
-## Ripetere
-
-```sh
-cd /Users/davidecarpini/apps/iurub
-./scripts/test-core.sh
-npm test
-./scripts/simulator.sh test
-./scripts/simulator.sh live
-TEST_RUNNER_IURUB_PLAYBACK_LIVE=1 ./scripts/simulator.sh live
-TEST_RUNNER_IURUB_SUMMARY_LIVE=1 ./scripts/simulator.sh live
-```
-
-Il normale `live` richiede il login YouTube e salta le due prove opt-in. Il flag playback abilita il player reale; summary abilita richieste reali OpenRouter con la chiave configurata. L’avvio normale usa sito e dati reali, senza fixture.
+La coda dei riassunti non è persistita dopo la chiusura e iOS può sospendere l’elaborazione in background. Le richieste automatiche consumano il credito OpenRouter già autorizzato. In questo aggiornamento il prefetch è stato provato con risposte simulate; **nessuna nuova richiesta reale a Gemini** è stata effettuata. L’integrazione reale Gemini e la ripresa della riproduzione erano state verificate nella versione 1.3.0, documentata nello storico.
 
 ## Deliverable
 
-- `iurub-sorgenti.zip`: progetto completo, test, script e documentazione, senza credenziali.
-- `iurub-in-corso.png`, `iurub-player-indietro.png`: player reale e ripresa.
-- `iurub-salvati-compatti.png`, `iurub-iscrizioni.png`, `iurub-esplora.png`: sito reale con cinque tab e controlli compatti.
-- `iurub-riassunto-chat.png`: riepilogo e prima domanda Gemini reale; `iurub-riassunto-test-live.png`: ulteriore domanda del collaudo finale.
-- `iurub-impostazioni.png`: sezioni aggiornate e OpenRouter configurato, senza chiave visibile.
-- `iurub-ripresa-fixture.png`: prova deterministica a 42 secondi con media simulato.
-- `iurub-test-ios.json`, `iurub-test-live.json`, `iurub-test-ripresa.json`, `iurub-test-javascript.txt`: esiti originali, incluso il timeout live poi risolto.
-- `LEGGIMI.txt`, `Avvia-iurub.command`: istruzioni e avvio del simulatore.
+Negli outputs: sorgenti aggiornati, rapporto, conteggio finale `iurub-test-ios.json`, tre rapporti originali separati, esito JavaScript e `iurub-layout-video-reale.json`.
+
+`iurub-video-commenti.png` e `iurub-commenti-aperti.png` mostrano il sito reale. `iurub-segnalibro-fixture.png` e `iurub-riassunto-anticipato-fixture.png` sono prove esplicitamente simulate. I risultati precedenti sono conservati in `storico/`.

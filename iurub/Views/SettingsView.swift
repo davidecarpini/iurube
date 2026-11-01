@@ -34,7 +34,7 @@ struct SettingsView: View {
                         } icon: { Image(systemName: "sparkles").foregroundStyle(Theme.accent) }
                     }.accessibilityIdentifier("summaryCredentialsButton")
                 } header: { Text("Riassunti con Gemini") } footer: {
-                    Text("Apri un video e tocca Riassunto per leggerlo in breve e fare domande. Le richieste usano il credito OpenRouter.")
+                    Text("Quando salvi un video in Guarda più tardi, inizia la preparazione del riassunto. Tocca Riassunto per leggerlo e fare domande. Le richieste usano il credito OpenRouter.")
                 }
                 Section {
                     HStack { BrandMark(); Spacer(); Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.1.0").foregroundStyle(.secondary) }

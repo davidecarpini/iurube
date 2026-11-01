@@ -2,9 +2,47 @@
 <html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta property="og:title" content="Video di prova"><title>Video di prova - YouTube</title>
 <style>
 body{font:16px -apple-system,BlinkMacSystemFont,sans-serif;margin:0;background:#faf8f5;color:#202020}main{padding:18px}h1{font-size:22px;line-height:1.25}video{display:block;width:100%;height:200px;background:linear-gradient(135deg,#173d45,#6e9e97);border-radius:18px}#position{font-size:21px;font-weight:600;font-variant-numeric:tabular-nums}button{display:block;width:100%;min-height:48px;margin-top:14px;padding:12px;border:0;border-radius:14px;background:#e84a38;color:white;font:600 16px -apple-system}p{line-height:1.5}.note{color:#6b6b6b;font-size:13px}
-</style></head><body><main><div id="movie_player"><video id="fixture-video" class="html5-main-video" playsinline aria-label="Player di prova"></video></div><h1 id="video-title">Video di prova</h1><p id="position" aria-live="polite">Posizione: 0 s</p><p>Durata: 300 s</p><button id="advance">Avanza a 42 secondi</button><button id="finish">Termina video</button><p class="note">Player locale per test ripetibili. Nessun video viene scaricato o riprodotto.</p></main>
+</style></head><body><main><div id="movie_player"><video id="fixture-video" class="html5-main-video" playsinline aria-label="Player di prova"></video></div><h1 id="video-title">Video di prova</h1><p id="position" aria-live="polite">Posizione: 0 s</p><p>Durata: 300 s</p><button id="advance">Avanza a 42 secondi</button><button id="finish">Termina video</button><p class="note">Player locale per test ripetibili. Nessun video viene scaricato o riprodotto.</p>
+<button id="fixture-playlist-menu">Salva in una playlist</button>
+<ytm-item-section-renderer section-identifier="comments">
+  <ytm-comments-entry-point-header-renderer><button id="fixture-comments">Commenti</button></ytm-comments-entry-point-header-renderer>
+  <ytm-comment-section-renderer id="fixture-comments-content" hidden><h2>Commenti del video</h2><p>Questo commento resta accessibile.</p></ytm-comment-section-renderer>
+</ytm-item-section-renderer>
+<ytm-item-section-renderer section-identifier="related-items">
+  <h2>Video consigliati</h2><ytm-video-with-context-renderer><a href="/watch?v=aqz-KE-bpKQ"><h3>Video suggerito da nascondere</h3></a></ytm-video-with-context-renderer>
+</ytm-item-section-renderer>
+</main>
 <script>
 /*IURUB_PLAYBACK_FIXTURE*/
+window.fixtureAccountIDs = window.fixtureAccountIDs || [];
+const fixtureID = new URL(location.href).searchParams.get('v') || location.pathname.split('/').pop();
+document.getElementById('fixture-playlist-menu').onclick = () => {
+  document.querySelector('[role="dialog"]')?.remove();
+  const menu = document.createElement('div'); menu.setAttribute('role','dialog');
+  const entry = document.createElement('button');
+  const removing = window.fixtureAccountIDs.includes(fixtureID);
+  entry.textContent = removing ? 'Rimuovi da Guarda più tardi' : 'Salva in Guarda più tardi';
+  entry.onclick = () => {
+    window.fixtureAccountIDs = removing ? window.fixtureAccountIDs.filter(id => id !== fixtureID) : [...window.fixtureAccountIDs, fixtureID];
+    window.webkit?.messageHandlers?.iurub?.postMessage({type: removing ? 'fixtureAccountRemove' : 'fixtureAccountSave', id: fixtureID});
+    menu.remove();
+    document.querySelectorAll('[role="status"]').forEach(node => node.remove());
+    const toast = document.createElement('div'); toast.setAttribute('role','status');
+    toast.textContent = removing ? 'Rimosso da Guarda più tardi ' : 'Aggiunto a Guarda più tardi';
+    if (removing) {
+      const undo = document.createElement('button'); undo.textContent = 'Annulla';
+      undo.onclick = () => {
+        if (!window.fixtureAccountIDs.includes(fixtureID)) window.fixtureAccountIDs.push(fixtureID);
+        window.webkit?.messageHandlers?.iurub?.postMessage({type:'fixtureAccountSave', id:fixtureID});
+        toast.textContent = 'Aggiunto a Guarda più tardi';
+      };
+      toast.append(undo);
+    }
+    document.body.append(toast);
+  };
+  menu.append(entry); document.body.append(menu);
+};
+document.getElementById('fixture-comments').onclick = () => { document.getElementById('fixture-comments-content').hidden = false; };
 const title = window.fixtureVideoTitle || 'Video di prova';
 document.title = title + ' - YouTube';
 document.querySelector('meta[property="og:title"]').content = title;

@@ -31,8 +31,13 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     @Published var notice: String?
     @Published var externalURL: URL?
     @Published private(set) var saveFeedback: String?
+    @Published private(set) var youtubeSavedIDs: Set<String> = []
+    @Published private(set) var youtubeRemovedIDs: Set<String> = []
     private(set) var webView: WKWebView!
     var onSave: ((SavedVideo) -> Void)?
+    var onYouTubeMembership: ((SavedVideo, Bool) -> Void)?
+    var onYouTubeSaved: ((SavedVideo) -> Void)?
+    var onAccountContextChanged: (() -> Void)?
     var onOpenVideo: ((SavedVideo, Double?) -> Void)? {
         didSet {
             installScripts()
@@ -55,6 +60,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     private var shortsEnabled = false
     private var savedIDs: [String] = []
+    private var removedIDs: [String] = []
     private var observers: [NSKeyValueObservation] = []
     private let messageProxy = MessageProxy()
     private var lastURL: URL = URL(string: "https://m.youtube.com/")!
@@ -105,10 +111,15 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         installScripts()
     }
 
-    func configure(shortsEnabled: Bool, savedIDs: [String]) {
-        guard self.shortsEnabled != shortsEnabled || self.savedIDs != savedIDs else { return }
+    func configure(shortsEnabled: Bool, savedIDs: [String], removedIDs: [String] = []) {
+        guard self.shortsEnabled != shortsEnabled || self.savedIDs != savedIDs || self.removedIDs != removedIDs else { return }
         self.shortsEnabled = shortsEnabled
         self.savedIDs = savedIDs
+        self.removedIDs = removedIDs
+        if saveDestination == .youtube {
+            youtubeSavedIDs = Set(savedIDs)
+            youtubeRemovedIDs = Set(removedIDs)
+        }
         installScripts()
         webView.evaluateJavaScript("window.iurub?.configure(\(configurationJSON));", completionHandler: nil)
         if !shortsEnabled, let url = webView.url, Self.isShortURL(url) {
@@ -117,8 +128,19 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         }
     }
 
+    func resetYouTubeMembership() {
+        guard saveDestination == .youtube else { return }
+        savedIDs = []
+        removedIDs = []
+        youtubeSavedIDs = []
+        youtubeRemovedIDs = []
+        installScripts()
+        webView.evaluateJavaScript("window.iurub?.configure({resetMembership:true,savedIDs:[],removedIDs:[]});", completionHandler: nil)
+    }
+
     private var configurationJSON: String {
         var config: [String: Any] = ["shortsEnabled": shortsEnabled, "savedIDs": savedIDs,
+            "removedIDs": removedIDs,
             "saveDestination": saveDestination.rawValue, "startPage": startPage.rawValue,
             "routeVideoOpens": role == .browse && onOpenVideo != nil, "trackPlayback": role == .player,
             "playbackSession": playbackSession]
@@ -168,6 +190,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     func home() { load(URL(string: "https://m.youtube.com/")!) }
 
     func openAccount() {
+        onAccountContextChanged?()
         pause()
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--fixture") {
@@ -335,7 +358,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     func saveCurrent() {
         if saveDestination == .youtube {
-            webView.evaluateJavaScript("window.iurub?.saveCurrentToYouTube();", completionHandler: nil)
+            webView.evaluateJavaScript("window.iurub?.toggleCurrentToYouTube();", completionHandler: nil)
             return
         }
         let requestedURL = webView.url
@@ -406,11 +429,30 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
                 currentVideo = nil
             }
         case "blockedShort": notice = "Gli Shorts sono disattivati. Puoi abilitarli nelle impostazioni."
+        case "youtubeMembership":
+            guard saveDestination == .youtube,
+                  let raw = body["video"] as? [String: Any], let video = decodeVideo(raw),
+                  let saved = body["saved"] as? Bool else { return }
+            onYouTubeMembership?(video, saved)
+        case "youtubeAccountContextChanged":
+            guard saveDestination == .youtube else { return }
+            onAccountContextChanged?()
         case "youtubeSaveResult":
             guard saveDestination == .youtube else { return }
+            let video = (body["video"] as? [String: Any]).flatMap(decodeVideo)
+            if let video, let saved = body["saved"] as? Bool {
+                onYouTubeMembership?(video, saved)
+                if body["status"] as? String == "saved", saved {
+                    // Only a newly confirmed account save starts a paid request.
+                    // Reading an existing playlist or an unconfirmed click does not.
+                    onYouTubeSaved?(video)
+                }
+            }
             switch body["status"] as? String {
             case "saved": saveFeedback = "Salvato in Guarda più tardi su YouTube"
+            case "removed": saveFeedback = "Rimosso da Guarda più tardi su YouTube"
             case "alreadySaved": saveFeedback = "È già in Guarda più tardi su YouTube"
+            case "alreadyRemoved": saveFeedback = "Il video non è in Guarda più tardi"
             case "submitted": saveFeedback = "Controlla la conferma di YouTube"
             case "choose": saveFeedback = "Seleziona Guarda più tardi nel menu YouTube"
             default: notice = "Apri il menu del video su YouTube e scegli Guarda più tardi. Se richiesto, accedi al tuo account."
@@ -496,6 +538,14 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         loadError = nil
         urlDidChange(webView.url)
         webView.evaluateJavaScript("window.iurub?.configure(\(configurationJSON));", completionHandler: nil)
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--watch-layout-probe"), role == .player {
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(5))
+                self?.captureWatchLayout()
+            }
+        }
+        #endif
     }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { handle(error) }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { handle(error) }
@@ -509,12 +559,38 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     #if DEBUG
+    /// Structural diagnostics for the opt-in live layout test. No cookies, tokens,
+    /// account identifiers, comment text or page HTML are exported.
+    private func captureWatchLayout() {
+        guard let url = webView.url, VideoLink.parse(url.absoluteString) != nil else { return }
+        let script = """
+        (() => {
+          const shape = n => ({tag:n.tagName, cls:typeof n.className==='string'?n.className:'',
+            shown:!!(n.getBoundingClientRect().width && n.getBoundingClientRect().height),
+            rect:n.getBoundingClientRect().toJSON()});
+          const ancestors = n => { const chain=[]; for(let i=0;n&&i<7;i++,n=n.parentElement) chain.push(shape(n)); return chain; };
+          return JSON.stringify({
+            path:location.pathname,
+            regions:Array.from(document.querySelectorAll('*')).filter(n=>/watch|comment|related|recommend|secondary/i.test(n.tagName+' '+n.className)).slice(0,160).map(n=>({...shape(n),children:Array.from(n.children).map(shape)})),
+            videoCards:Array.from(document.querySelectorAll('a[href*="/watch?v="]')).slice(0,10).map(ancestors)
+          });
+        })()
+        """
+        webView.evaluateJavaScript(script) { value, _ in
+            guard let json = value as? String else { return }
+            let file = FileManager.default.temporaryDirectory.appendingPathComponent("iurub-watch-layout.json")
+            try? json.write(to: file, atomically: true, encoding: .utf8)
+        }
+    }
+
     private func loadPlaybackFixture(_ video: SavedVideo) {
         guard let file = Bundle.main.url(forResource: "PlaybackFixture", withExtension: "html"),
               var html = try? String(contentsOf: file, encoding: .utf8) else { return }
         let titleData = try! JSONEncoder().encode(video.title)
         let title = String(decoding: titleData, as: UTF8.self).replacingOccurrences(of: "<", with: "\\u003c")
-        html = html.replacingOccurrences(of: "/*IURUB_PLAYBACK_FIXTURE*/", with: "window.fixtureVideoTitle = \(title);")
+        let ids = UserDefaults(suiteName: "it.davidecarpini.iurub.uitests")!.stringArray(forKey: "fixtureAccountIDs") ?? ["M7lc1UVf-VE"]
+        let accountData = try! JSONSerialization.data(withJSONObject: ids)
+        html = html.replacingOccurrences(of: "/*IURUB_PLAYBACK_FIXTURE*/", with: "window.fixtureVideoTitle = \(title); window.fixtureAccountIDs = \(String(decoding: accountData, as: UTF8.self));")
         hasLoaded = true
         loadError = nil
         lastURL = video.url

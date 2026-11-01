@@ -16,6 +16,11 @@
   let scanQueued = false;
   let lastCurrent = '';
   const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+  const accountMembership = new Map();
+  const reportedMembership = new Map();
+  const observedWatchLaterCards = new WeakMap();
+  let undoCandidate = null;
+  mergeMembership(initial);
   const CARD = [
     'ytm-video-with-context-renderer', 'ytm-video-renderer', 'ytm-compact-video-renderer',
     'ytm-playlist-video-renderer', 'ytd-playlist-video-renderer', 'ytm-grid-video-renderer', 'ytm-rich-item-renderer', 'ytm-reel-item-renderer',
@@ -67,6 +72,7 @@
     style.textContent = `
       ytm-pivot-bar-renderer, .pivot-bar-renderer { display:none !important; }
       ytm-app { padding-bottom:0 !important; }
+      html.iurub-watch-page [data-iurub-watch-recommendations] { display:none !important; }
       html.iurub-no-shorts ${SHORT_SHELF.split(',').join(',html.iurub-no-shorts ')} { display:none !important; }
       html.iurub-no-shorts a[href^="/shorts/"], html.iurub-no-shorts a[href*="youtube.com/shorts/"] { display:none !important; }
       html.iurub-watch-later yt-page-header-renderer,
@@ -88,6 +94,7 @@
       .iurub-save:disabled, .iurub-remove:disabled { opacity:.45; }
       .iurub-save:focus-visible, .iurub-remove:focus-visible { outline:3px solid #e84a38; outline-offset:-3px; }
       .iurub-save[data-saved="true"] { color:#396548; }
+      .iurub-save[data-saved="true"] svg { fill:currentColor; }
       .iurub-save[data-saved="true"]::before { background:#487b4918; }
       .iurub-action-label { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
       .iurub-inline-details { display:flex !important; align-items:flex-start; }
@@ -131,85 +138,159 @@
     do { const value = read(); if (value) return value; await new Promise(r => setTimeout(r, 100)); } while (Date.now() < end);
     return null;
   }
-  function accountResult(status) { post('youtubeSaveResult', { status }); }
+  function mergeMembership(config) {
+    if (config.resetMembership === true) {
+      accountMembership.clear(); reportedMembership.clear(); undoCandidate = null;
+      // Existing cards may be stale after an account change; configure is not evidence.
+    }
+    for (const id of Array.isArray(config.savedIDs) ? config.savedIDs : []) if (VIDEO_ID.test(id)) { accountMembership.set(id, true); reportedMembership.set(id, true); }
+    for (const id of Array.isArray(config.removedIDs) ? config.removedIDs : []) if (VIDEO_ID.test(id)) { accountMembership.set(id, false); reportedMembership.set(id, false); }
+  }
+  function rememberMembership(video, saved) {
+    if (!accountSaving || !video || !VIDEO_ID.test(video.id || '') || typeof saved !== 'boolean') return;
+    accountMembership.set(video.id, saved);
+    document.querySelectorAll('.iurub-save').forEach(button => {
+      if (button.dataset.videoId === video.id) updateButton(button, video.id);
+    });
+    if (reportedMembership.get(video.id) !== saved) {
+      reportedMembership.set(video.id, saved);
+      post('youtubeMembership', {video, saved});
+    }
+  }
+  function accountResult(status, video, saved) {
+    post('youtubeSaveResult', {status, video, ...(typeof saved === 'boolean' ? {saved} : {})});
+  }
   const notifications = () => Array.from(document.querySelectorAll('[role="status"], [role="alert"], ytm-notification-text-renderer, tp-yt-paper-toast, yt-notification-action-renderer')).filter(visible);
   const notificationSnapshot = () => new Map(notifications().map(n => [n, labelOf(n)]));
-  async function finishAccountSave(before) {
-    const confirmed = await until(() => notifications()
-      .find(n => before.get(n) !== labelOf(n) && /added|saved|aggiunto|aggiunta|salvato|salvata/i.test(labelOf(n)) && !/not |non |impossibile|error/i.test(labelOf(n))), 2200);
-    accountResult(confirmed ? 'saved' : 'submitted');
+  const freshNotifications = before => notifications().filter(n => before.get(n) !== labelOf(n)).map(labelOf);
+  const failureNotice = text => /\b(error|failed|unable|cannot|couldn.t|impossibile|errore|riprova)\b|not (?:added|saved|removed)|non (?:salvat|aggiunt|rimoss)/i.test(text);
+  const savedNotice = text => watchLaterText.test(text) && /added|saved|aggiunt[oa]|salvat[oa]/i.test(text) && !failureNotice(text);
+  const removedNotice = text => watchLaterText.test(text) && /removed|rimoss[oa]|rimozione/i.test(text) && !failureNotice(text);
+  const directWatchLater = () => menuRoots().flatMap(controls).find(n => watchLaterText.test(labelOf(n)) && /save|add|salva|aggiungi|remove|rimuovi/i.test(labelOf(n)));
+  const directState = node => /remove|rimuovi/i.test(labelOf(node)) ? true : /save|add|salva|aggiungi/i.test(labelOf(node)) ? false : null;
+  function dismissChooser() {
+    const close = menuRoots().flatMap(controls).find(n => /^(close|chiudi|done|fine)$/i.test(labelOf(n)));
+    close?.click();
   }
-  async function chooseWatchLater() {
-    const entry = await until(() => {
-      const checkbox = watchLaterChoice();
-      if (checkbox) return { checkbox };
-      for (const root of menuRoots()) {
-        const direct = controls(root).find(n => watchLaterText.test(labelOf(n)) && /save|add|salva|aggiungi|remove|rimuovi/i.test(labelOf(n)));
-        if (direct) return { direct };
-        const playlist = controls(root).find(n => /save to playlist|salva (in una|nella|in) playlist|salva in una raccolta/i.test(labelOf(n)));
-        if (playlist) return { playlist };
+  async function transitionEvidence(before, desired, allowUndo = false) {
+    const started = Date.now();
+    return await until(() => {
+      const notices = freshNotifications(before);
+      if (notices.some(failureNotice)) return 'failed';
+      if (notices.some(desired ? savedNotice : removedNotice)) return 'confirmed';
+      if (allowUndo && notices.some(text => /^(?:action )?undone|^annullat[oa]|annullamento (?:riuscito|completato)/i.test(text))) return 'confirmed';
+      // Wait for a changed control to settle; detached chooser state is not proof.
+      if (Date.now() - started >= 250) {
+        const choice = watchLaterChoice();
+        if (choice && selectionState(choice) === desired) return 'confirmed';
+        const direct = directWatchLater();
+        if (direct && directState(direct) === desired) return 'confirmed';
       }
       return null;
-    });
-    if (!entry) { accountResult('manual'); return; }
-    if (entry.direct) {
-      if (/remove|rimuovi/i.test(labelOf(entry.direct))) { accountResult('alreadySaved'); return; }
-      const before = notificationSnapshot();
-      entry.direct.click();
-      await finishAccountSave(before);
-    } else if (entry.playlist) {
-      entry.playlist.click();
-      // Wait for the chooser instead of clicking the same menu entry again.
-      await chooseCheckbox();
-    } else { await chooseCheckbox(entry.checkbox); }
+    }, 2200);
   }
-  async function chooseCheckbox(existing) {
+  async function finishAccountChange(video, desired, previous, before) {
+    const evidence = await transitionEvidence(before, desired);
+    if (evidence === 'confirmed') {
+      rememberMembership(video, desired);
+      undoCandidate = {video, saved:previous, expires:Date.now() + 15000};
+      accountResult(desired ? 'saved' : 'removed', video, desired);
+      dismissChooser();
+    } else accountResult(evidence === 'failed' ? 'failed' : 'submitted', video);
+  }
+  async function chooseCheckbox(video, desired, existing) {
     const checkbox = existing || await until(watchLaterChoice);
-    if (!checkbox) { accountResult('choose'); return; }
+    if (!checkbox) { accountResult('choose', video); return; }
     const selected = selectionState(checkbox);
-    if (selected === true) { accountResult('alreadySaved'); return; }
-    if (selected === null) { accountResult('choose'); return; }
+    if (selected === null) { accountResult('choose', video); return; }
+    rememberMembership(video, selected);
+    if (selected === desired) {
+      accountResult(desired ? 'alreadySaved' : 'alreadyRemoved', video, selected);
+      dismissChooser(); return;
+    }
     const before = notificationSnapshot();
     checkbox.click();
     const confirm = menuRoots().flatMap(controls).find(n => /^(done|save|fine|salva)$/i.test(labelOf(n)));
-    if (confirm) confirm.click();
-    await finishAccountSave(before);
+    confirm?.click();
+    await finishAccountChange(video, desired, selected, before);
+  }
+  async function chooseWatchLater(video, desired) {
+    const entry = await until(() => {
+      const checkbox = watchLaterChoice();
+      if (checkbox) return {checkbox};
+      const direct = directWatchLater();
+      if (direct) return {direct};
+      const playlist = menuRoots().flatMap(controls).find(n => /save to playlist|salva (in una|nella|in) playlist|salva in una raccolta/i.test(labelOf(n)));
+      return playlist ? {playlist} : null;
+    });
+    if (!entry) { accountResult('manual', video); return; }
+    if (entry.direct) {
+      const selected = directState(entry.direct);
+      if (selected === null) { accountResult('choose', video); return; }
+      rememberMembership(video, selected);
+      if (selected === desired) {
+        accountResult(desired ? 'alreadySaved' : 'alreadyRemoved', video, selected);
+        dismissChooser(); return;
+      }
+      const before = notificationSnapshot();
+      entry.direct.click();
+      await finishAccountChange(video, desired, selected, before);
+    } else if (entry.playlist) {
+      entry.playlist.click();
+      await chooseCheckbox(video, desired);
+    } else await chooseCheckbox(video, desired, entry.checkbox);
   }
   function cardMenu(card) {
     return controls(card).find(n => /action menu|menu azion[ei]|menu delle azioni|altre azioni|more actions/i.test(labelOf(n)))
       || card.querySelector('button[aria-haspopup="true"], ytm-menu-renderer button, ytm-menu-renderer .icon-button, ytm-bottom-sheet-renderer button');
   }
-  async function removeThroughYouTube(card, button) {
-    if (savingToAccount) return;
-    savingToAccount = true; button.disabled = true;
-    try {
-      const opener = cardMenu(card);
-      if (!opener) { post('youtubeRemoveResult', {status:'manual'}); return; }
-      opener.click();
-      const remove = await until(() => menuRoots().flatMap(controls).find(n => watchLaterText.test(labelOf(n)) && /remove|rimuovi/i.test(labelOf(n))));
-      if (!remove) { post('youtubeRemoveResult', {status:'manual'}); return; }
-      remove.click();
-      // YouTube updates the row and exposes its own Undo; never remove a row optimistically.
-      post('youtubeRemoveResult', {status:'submitted'});
-    } catch { post('youtubeRemoveResult', {status:'manual'}); }
-    finally { savingToAccount = false; button.disabled = false; }
-  }
-  async function saveThroughYouTube(card, video, button) {
-    if (savingToAccount || (!shortsEnabled && video?.isShort)) return;
+  async function saveThroughYouTube(card, video, button, requestedState) {
+    if (savingToAccount || !video || !VIDEO_ID.test(video.id || '') || (!shortsEnabled && video.isShort)) return;
     savingToAccount = true;
+    const desired = typeof requestedState === 'boolean' ? requestedState : accountMembership.get(video.id) !== true;
     if (button) button.disabled = true;
     try {
-      let opener;
-      if (card) {
-        opener = cardMenu(card);
-      } else {
-        opener = controls(document).find(n => /^(save.*playlist|salva.*playlist)$/i.test(labelOf(n)));
+      let opener = card ? cardMenu(card) : controls(document).find(n => /^(save.*playlist|salva.*playlist)$/i.test(labelOf(n)));
+      if (!opener && !card) {
+        const actions = document.querySelector('ytm-slim-video-action-bar-renderer, ytm-slim-video-metadata-section-renderer, #above-the-fold #actions');
+        if (actions) opener = controls(actions).find(n => /^(save|salva)$/i.test(labelOf(n)));
       }
-      if (!opener) { accountResult('manual'); return; }
+      if (!opener) { accountResult('manual', video); return; }
       opener.click();
-      await chooseWatchLater();
-    } catch { accountResult('manual'); }
+      await chooseWatchLater(video, desired);
+    } catch { accountResult('manual', video); }
     finally { savingToAccount = false; if (button) button.disabled = false; }
+  }
+  function removeThroughYouTube(card, button) {
+    const anchor = Array.from(card.querySelectorAll('a[href]')).find(a => parseLink(a.href));
+    const link = anchor && parseLink(anchor.href);
+    if (link) saveThroughYouTube(card, metadata(card, anchor, link), button, false);
+  }
+  function observeAccountContext(event) {
+    if (!accountSaving || event.target.closest?.('.iurub-save,.iurub-remove')) return;
+    const control = event.target.closest?.('button,[role="button"],[role="menuitem"]');
+    const accountAction = control && /^(switch accounts?|cambia account|cambia profilo|sign out|log out|esci|sign in|log in|accedi|use youtube signed out|usa youtube senza eseguire l.accesso)$/i.test(labelOf(control));
+    let accountLink = false;
+    const anchor = event.target.closest?.('a[href]');
+    if (anchor) {
+      try {
+        const url = new URL(anchor.href, location.href);
+        if (['https:', 'http:'].includes(url.protocol) && !url.username && !url.password) accountLink = url.hostname === 'accounts.google.com' || ((url.hostname === 'youtube.com' || url.hostname.endsWith('.youtube.com')) && /^\/(?:signin|logout|feed\/library)\/?$/.test(url.pathname));
+      } catch {}
+    }
+    if (accountAction || accountLink) post('youtubeAccountContextChanged');
+  }
+  function observeUndo(event) {
+    const control = event.target.closest?.('button,[role="button"]');
+    if (!control || !/^(undo|annulla)$/i.test(labelOf(control)) || !undoCandidate || Date.now() > undoCandidate.expires) return;
+    if (!control.closest('[role="status"],[role="alert"],ytm-notification-text-renderer,tp-yt-paper-toast,yt-notification-action-renderer')) return;
+    const context = undoCandidate;
+    const before = notificationSnapshot();
+    undoCandidate = null;
+    // YouTube owns Undo; a confirming update, rather than the click, is evidence.
+    setTimeout(async () => {
+      if (await transitionEvidence(before, context.saved, true) === 'confirmed') rememberMembership(context.video, context.saved);
+    }, 0);
   }
   const actionIcons = {
     save: 'M7 3h10a1 1 0 0 1 1 1v17l-6-4-6 4V4a1 1 0 0 1 1-1Z',
@@ -252,15 +333,35 @@
     }
   }
   function updateButton(button, id) {
-    const saved = !accountSaving && savedIDs.has(id);
-    const label = saved ? '✓ Salvato in Guarda più tardi' : '+ Guarda più tardi';
+    const saved = accountSaving ? accountMembership.get(id) === true : savedIDs.has(id);
+    const label = saved ? (accountSaving ? 'Rimuovi da Guarda più tardi' : '✓ Salvato in Guarda più tardi') : '+ Guarda più tardi';
     setActionIcon(button, 'save', label);
     button.dataset.saved = String(saved);
+    button.setAttribute('aria-pressed', String(saved));
+  }
+  const watchComments = 'ytm-comments-entry-point-header-renderer,ytm-comment-section-renderer,ytm-comment-thread-renderer,ytm-comments-header-renderer,ytd-comments,ytd-comment-thread-renderer,comments-entry-point-teaser-view-model,yt-comment-teaser-carousel-item-view-model,yt-comments-entry-point-header-view-model';
+  const watchProtected = watchComments + ',ytm-slim-video-metadata-section-renderer,ytm-slim-video-action-bar-renderer,ytm-slim-owner-renderer,ytm-structured-description-content-renderer,ytm-expandable-video-description-body-renderer,ytm-playlist-panel-renderer,ytd-playlist-panel-renderer,ytm-engagement-panel-section-list-renderer,ytd-engagement-panel-section-list-renderer,#movie_player,#player,ytm-player,.html5-video-player,[role="dialog"],[role="menu"]';
+  function simplifyWatchPage() {
+    const watchPage = location.pathname === '/watch' && Boolean(parseLink(location.href));
+    document.documentElement.classList.toggle('iurub-watch-page', watchPage);
+    document.querySelectorAll('[data-iurub-watch-recommendations]').forEach(node => node.removeAttribute('data-iurub-watch-recommendations'));
+    if (!watchPage) return;
+    // The authenticated mobile layout keeps metadata and the comments teaser
+    // inside .related-chips-slot-wrapper. Never hide that entire wrapper.
+    const sections = document.querySelectorAll('ytm-item-section-renderer,ytm-watch-next-secondary-results-renderer,ytd-watch-next-secondary-results-renderer,#related');
+    sections.forEach(section => {
+      if (section.closest(watchProtected) || section.querySelector(watchProtected)) return;
+      if (section.getAttribute('section-identifier') === 'related-items' || section.matches('ytm-watch-next-secondary-results-renderer,ytd-watch-next-secondary-results-renderer,#related') || section.querySelector('ytm-related-chip-cloud-renderer,' + CARD)) section.setAttribute('data-iurub-watch-recommendations', 'true');
+    });
+    document.querySelectorAll(CARD + ',ytm-related-chip-cloud-renderer').forEach(card => {
+      if (!card.closest(watchProtected)) card.setAttribute('data-iurub-watch-recommendations', 'true');
+    });
   }
   function scan() {
     scanQueued = false;
     if (!document.documentElement) return;
     installStyle();
+    simplifyWatchPage();
     document.documentElement.classList.toggle('iurub-no-shorts', !shortsEnabled);
     const inWatchLater = (location.pathname === '/playlist' && new URL(location.href).searchParams.get('list') === 'WL') || document.documentElement.dataset.fixturePlaylist === 'true';
     document.documentElement.classList.toggle('iurub-watch-later', inWatchLater);
@@ -287,6 +388,10 @@
       const link = anchor && parseLink(anchor.getAttribute('href'));
       let removeButton = card.querySelector('.iurub-remove');
       if (accountSaving && inWatchLater && link) {
+        if (observedWatchLaterCards.get(card) !== link.id) {
+          observedWatchLaterCards.set(card, link.id);
+          rememberMembership(metadata(card, anchor, link), true);
+        }
         card.querySelector('.iurub-save')?.remove();
         if (!removeButton) {
           removeButton = document.createElement('button'); removeButton.type = 'button';
@@ -481,6 +586,8 @@
   }
   document.addEventListener('click', event => {
     const target = event.target;
+    observeUndo(event);
+    observeAccountContext(event);
     const anchor = target.closest?.('a[href]');
     if (!shortsEnabled && ((anchor && isShortRoute(anchor.href)) || target.closest?.('[data-iurub-short],.pivot-shorts'))) {
       event.preventDefault(); event.stopImmediatePropagation(); post('blockedShort'); return;
@@ -510,6 +617,7 @@
     configure(config) {
       if ('shortsEnabled' in config) shortsEnabled = Boolean(config.shortsEnabled);
       if ('savedIDs' in config) savedIDs = new Set(config.savedIDs || []);
+      if (accountSaving) mergeMembership(config);
       if ('routeVideoOpens' in config) routeVideoOpens = Boolean(config.routeVideoOpens);
       if ('trackPlayback' in config) trackPlayback = Boolean(config.trackPlayback);
       if (config.resume) restorePlayback(config.resume);
@@ -521,6 +629,7 @@
     restorePlayback,
     adoptPlayback,
     saveCurrentToYouTube() { saveThroughYouTube(null, currentVideo(), null); },
+    toggleCurrentToYouTube() { saveThroughYouTube(null, currentVideo(), null); },
     pause() { reportPlayback(true); document.querySelectorAll('video,audio').forEach(media => media.pause()); }
   };
   if (document.documentElement) {
@@ -528,7 +637,14 @@
     installStyle();
   }
   if (initial.resume) restorePlayback(initial.resume);
-  const observer = new MutationObserver(scheduleScan);
+  const observer = new MutationObserver(records => {
+    for (const record of records) for (const node of record.removedNodes) {
+      if (node.nodeType !== 1) continue;
+      if (node.matches(CARD)) observedWatchLaterCards.delete(node);
+      node.querySelectorAll(CARD).forEach(card => observedWatchLaterCards.delete(card));
+    }
+    scheduleScan();
+  });
   observer.observe(document, { childList:true, subtree:true, attributes:true, attributeFilter:['href'] });
   document.addEventListener('DOMContentLoaded', checkRoute, { once:true });
   checkRoute();

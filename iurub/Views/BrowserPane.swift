@@ -7,6 +7,7 @@ struct BrowserPane: View {
     @ObservedObject var session: BrowserSession
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var summaries: SummaryStore
     var extendsToBottom = false
     var onSave: ((SavedVideo) -> Void)? = nil
     @State private var feedback: String?
@@ -33,25 +34,32 @@ struct BrowserPane: View {
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if let video = session.currentVideo {
-                    let saved = session.saveDestination == .device && library.contains(video.id)
+                    let saved = session.saveDestination == .youtube ? session.youtubeSavedIDs.contains(video.id) : library.contains(video.id)
                     HStack(spacing: 10) {
                         Button(action: session.saveCurrent) {
                             Image(systemName: saved ? "bookmark.fill" : "bookmark")
                                 .font(.headline).frame(width: 44, height: 44)
                         }
-                        .disabled(saved)
-                        .accessibilityLabel(session.saveDestination == .youtube ? "Guarda più tardi" : (saved ? "Salvato sul dispositivo" : "Salva sul dispositivo"))
+                        .disabled(session.saveDestination == .device && saved)
+                        .accessibilityLabel(session.saveDestination == .youtube ? (saved ? "Rimuovi da Guarda più tardi" : "Guarda più tardi") : (saved ? "Salvato sul dispositivo" : "Salva sul dispositivo"))
+                        .accessibilityValue(saved ? "salvato" : (session.saveDestination == .youtube && !session.youtubeRemovedIDs.contains(video.id) ? "da verificare" : "non salvato"))
                         .accessibilityIdentifier("saveCurrentVideo")
                         Button {
                             session.pause()
                             summaryVideo = video
                         } label: {
-                            Label("Riassunto", systemImage: "sparkles")
-                                .font(.subheadline.weight(.semibold))
-                                .frame(maxWidth: .infinity).frame(minHeight: 44)
-                                .background(Theme.accent.opacity(0.1), in: Capsule())
+                            HStack(spacing: 8) {
+                                if summaries.busy.contains(video.id) || summaries.queued.contains(video.id) {
+                                    ProgressView().controlSize(.small)
+                                } else { Image(systemName: "sparkles") }
+                                Text("Riassunto")
+                            }
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity).frame(minHeight: 44)
+                            .background(Theme.accent.opacity(0.1), in: Capsule())
                         }
                         .accessibilityIdentifier("summaryButton")
+                        .accessibilityValue(summaries.busy.contains(video.id) ? "In preparazione" : (summaries.queued.contains(video.id) ? "In attesa" : ((summaries.conversations[video.id] ?? []).isEmpty ? "Da preparare" : "Pronto")))
                     }
                     .padding(.horizontal, 16).padding(.vertical, 8)
                     .background(.regularMaterial)
@@ -72,7 +80,9 @@ struct BrowserPane: View {
                 session.onSave = { video in
                     onSave?(video)
                     feedback = library.contains(video.id) ? "Salvato sul dispositivo" : (library.errorMessage ?? "Salvataggio non riuscito")
-                    session.configure(shortsEnabled: settings.shortsEnabled, savedIDs: library.videos.map(\.id))
+                    if session.saveDestination == .device {
+                        session.configure(shortsEnabled: settings.shortsEnabled, savedIDs: library.videos.map(\.id))
+                    }
                 }
             }
             .onDisappear { session.pause(); session.onSave = nil }

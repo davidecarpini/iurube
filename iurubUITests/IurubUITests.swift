@@ -14,7 +14,7 @@ final class IurubUITests: XCTestCase {
         XCTAssertTrue(app.webViews.staticTexts["Video già salvato nell’account"].exists)
         XCTAssertFalse(app.buttons["exploreButton"].exists)
         app.tabBars.buttons["Esplora"].tap()
-        let save = app.webViews.buttons["+ Guarda più tardi"].firstMatch
+        let save = webBookmark("+ Guarda più tardi")
         XCTAssertTrue(save.waitForExistence(timeout: 10))
         save.tap()
         XCTAssertTrue(app.staticTexts["Salvato in Guarda più tardi su YouTube"].waitForExistence(timeout: 5))
@@ -39,6 +39,96 @@ final class IurubUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Archivio locale"].exists)
         XCTAssertFalse(app.buttons["deviceLibraryButton"].exists)
         capture("settings-cleaned")
+    }
+
+    func testAccountBookmarkFillsAfterSaveAndRemovesOnSecondTap() throws {
+        app.tabBars.buttons["Esplora"].tap()
+        let emptyBookmark = webBookmark("+ Guarda più tardi")
+        XCTAssertTrue(emptyBookmark.waitForExistence(timeout: 10))
+        emptyBookmark.tap()
+        let filledBookmark = webBookmark("Rimuovi da Guarda più tardi")
+        XCTAssertTrue(filledBookmark.waitForExistence(timeout: 10), "Only a confirmed account save should fill the bookmark")
+        XCTAssertFalse(emptyBookmark.exists)
+        capture("account-bookmark-filled")
+        filledBookmark.tap()
+        XCTAssertTrue(emptyBookmark.waitForExistence(timeout: 10), "Tapping the filled bookmark must remove membership")
+        XCTAssertTrue(app.webViews.buttons["Annulla"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Salvati"].tap()
+        XCTAssertTrue(app.webViews.staticTexts["Video già salvato nell’account"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.webViews.staticTexts["Musica per concentrarsi"].exists)
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--fixture"]
+        app.launch()
+        XCTAssertTrue(app.webViews.staticTexts["Video già salvato nell’account"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.webViews.staticTexts["Musica per concentrarsi"].exists, "The simulated YouTube account must persist removal")
+    }
+
+    func testCurrentVideoBookmarkTogglesAndCommentsRemainAccessible() throws {
+        app.tabBars.buttons["Esplora"].tap()
+        let video = app.webViews.staticTexts["Musica per concentrarsi"]
+        XCTAssertTrue(video.waitForExistence(timeout: 10))
+        video.tap()
+        let bookmark = app.buttons["saveCurrentVideo"]
+        XCTAssertTrue(bookmark.waitForExistence(timeout: 10))
+        XCTAssertEqual(bookmark.value as? String, "da verificare")
+        bookmark.tap()
+        let saved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "salvato"), object: bookmark)
+        XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 10), .completed)
+        XCTAssertEqual(bookmark.label, "Rimuovi da Guarda più tardi")
+        bookmark.tap()
+        let removed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "non salvato"), object: bookmark)
+        XCTAssertEqual(XCTWaiter.wait(for: [removed], timeout: 10), .completed)
+        XCTAssertEqual(bookmark.label, "Guarda più tardi")
+        let comments = app.webViews.buttons["Commenti"]
+        XCTAssertTrue(comments.waitForExistence(timeout: 10))
+        let recommendations = app.webViews.staticTexts["Video suggerito da nascondere"]
+        let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: recommendations)
+        XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed)
+        revealInWebView(comments)
+        comments.tap()
+        let comment = app.webViews.staticTexts["Questo commento resta accessibile."]
+        XCTAssertTrue(comment.waitForExistence(timeout: 5))
+        revealInWebView(comment)
+        XCTAssertTrue(comment.isHittable)
+        XCTAssertFalse(recommendations.exists)
+        capture("video-comments-without-recommendations")
+    }
+
+    func testConfirmedSavePrefetchesSummaryBeforeOpeningChat() throws {
+        let id = "jfKfPfyJRdk"
+        func prefetchStatus() -> [String: Any]? {
+            let status = app.staticTexts["summaryPrefetchStatus"]
+            guard status.exists, let data = status.label.data(using: .utf8) else { return nil }
+            return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        }
+        app.tabBars.buttons["Esplora"].tap()
+        let bookmark = webBookmark("+ Guarda più tardi")
+        XCTAssertTrue(bookmark.waitForExistence(timeout: 10))
+        XCTAssertFalse((prefetchStatus()?["ready"] as? [String] ?? []).contains(id))
+        bookmark.tap()
+        XCTAssertTrue(webBookmark("Rimuovi da Guarda più tardi").waitForExistence(timeout: 10))
+        let prefetched = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            (prefetchStatus()?["ready"] as? [String] ?? []).contains(id)
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [prefetched], timeout: 10), .completed, "A confirmed save must prepare the summary before the modal is opened")
+        XCTAssertEqual((prefetchStatus()?["counts"] as? [String: Int])?[id], 1)
+        app.webViews.staticTexts["Musica per concentrarsi"].tap()
+        XCTAssertTrue(app.buttons["summaryButton"].waitForExistence(timeout: 10))
+        app.buttons["summaryButton"].tap()
+        let replies = app.staticTexts.matching(identifier: "summaryReply")
+        XCTAssertTrue(replies.firstMatch.waitForExistence(timeout: 3))
+        let summary = replies.firstMatch.label
+        XCTAssertFalse(app.buttons["cancelSummary"].exists, "The cached summary should not start another request")
+        XCTAssertEqual(replies.count, 1)
+        capture("summary-prefetched-on-save")
+        app.buttons["closeSummary"].tap()
+        XCTAssertEqual((prefetchStatus()?["counts"] as? [String: Int])?[id], 1)
+        app.buttons["summaryButton"].tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == %@", summary)).firstMatch.waitForExistence(timeout: 3))
+        XCTAssertEqual(replies.count, 1)
+        XCTAssertFalse(app.buttons["cancelSummary"].exists)
+        app.buttons["closeSummary"].tap()
+        XCTAssertEqual((prefetchStatus()?["counts"] as? [String: Int])?[id], 1)
     }
 
     func testShortsTogglePersistsAndRestoresShelf() throws {
@@ -212,6 +302,19 @@ final class IurubUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Salvati"].isSelected, "A completed video must not automatically resume on launch")
     }
 
+    private func webBookmark(_ label: String) -> XCUIElement {
+        // WebKit may expose an HTML button with aria-pressed as a toggle/switch.
+        // Match its exact accessible name without assuming the platform AX role.
+        app.webViews.descendants(matching: .any).matching(identifier: label).firstMatch
+    }
+
+    private func revealInWebView(_ element: XCUIElement) {
+        for _ in 0..<5 {
+            if element.isHittable { return }
+            app.webViews.firstMatch.swipeUp()
+        }
+    }
+
     private func capture(_ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name
@@ -222,6 +325,24 @@ final class IurubUITests: XCTestCase {
 
 // Opt-in, read-only verification using the existing YouTube login.
 final class IurubLiveUITests: XCTestCase {
+    func testRealVideoCommentsRemainAccessible() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_LAYOUT_LIVE"] == "1", "Requires the public YouTube watch page")
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--playback-live", "--start-video-at-8", "--pause-restored-video", "--watch-layout-probe"]
+        app.launch()
+        XCTAssertTrue(app.buttons["summaryButton"].waitForExistence(timeout: 30))
+        let comments = app.webViews.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH[c] %@", "Commenti")).firstMatch
+        XCTAssertTrue(comments.waitForExistence(timeout: 30))
+        capture("real-watch-comments-entry", app: app)
+        comments.tap()
+        let close = app.webViews.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "Chiudi", "Close")).firstMatch
+        XCTAssertTrue(close.waitForExistence(timeout: 15), "The official comments panel must open")
+        capture("real-watch-comments-open", app: app)
+        close.tap()
+        XCTAssertTrue(app.buttons["summaryButton"].exists)
+    }
+
     func testRealVideoResumeAfterRestart() throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_PLAYBACK_LIVE"] == "1", "Requires public YouTube playback")
         continueAfterFailure = false

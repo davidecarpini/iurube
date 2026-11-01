@@ -112,6 +112,7 @@ final class SummaryStore: ObservableObject {
     @Published private(set) var conversations: [String: [SummaryMessage]] = [:]
     @Published private(set) var pending: [String: String] = [:]
     @Published private(set) var busy: Set<String> = []
+    @Published private(set) var queued: Set<String> = []
     @Published private(set) var errors: [String: String] = [:]
     @Published private(set) var persistenceError: String?
     private let fileURL: URL
@@ -120,6 +121,11 @@ final class SummaryStore: ObservableObject {
     private var tasks: [String: Task<Void, Never>] = [:]
     private var requestIDs: [String: UUID] = [:]
     private var canPersist = true
+    private var automaticQueue: [SavedVideo] = []
+    private var automaticAttempts: Set<String> = []
+    // Keep the slot until the task actually exits, even when clear invalidates its
+    // response. A cancelled provider can still have an outstanding network request.
+    private var automaticRequestToken: UUID?
 
     init(fileURL: URL? = nil, service: any VideoSummarizing = OpenRouterSummaryService(),
          keyProvider: @escaping () throws -> String? = SummaryCredentials.read) {
@@ -138,19 +144,55 @@ final class SummaryStore: ObservableObject {
             }
         }
     }
+    /// Called only after a new YouTube save is confirmed, never when reading a playlist.
+    /// The queue lives in memory: reopening the app does not launch paid requests.
+    func prefetch(video: SavedVideo) {
+        let id = video.id
+        guard VideoLink.validID(id), (conversations[id] ?? []).isEmpty,
+              !busy.contains(id), pending[id] == nil, errors[id] == nil,
+              !automaticAttempts.contains(id) else { return }
+        automaticAttempts.insert(id)
+        automaticQueue.append(video)
+        queued.insert(id)
+        startNextAutomaticRequest()
+    }
+
     func request(video: SavedVideo, question: String? = nil) {
         let id = video.id
+        // Opening a prefetched video uses the same in-flight task and conversation.
         guard !busy.contains(id) else { return }
+        removeFromAutomaticQueue(id)
         let text = String((question ?? pending[id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).prefix(4000))
         if text.isEmpty && !(conversations[id] ?? []).isEmpty { return }
+        // A manual request takes priority over queued automatic work. It can run
+        // alongside the one automatic request already in flight.
+        beginRequest(video: video, question: text, automatic: false)
+    }
+
+    private func startNextAutomaticRequest() {
+        guard automaticRequestToken == nil else { return }
+        while !automaticQueue.isEmpty {
+            let video = automaticQueue.removeFirst()
+            queued.remove(video.id)
+            guard (conversations[video.id] ?? []).isEmpty, !busy.contains(video.id),
+                  pending[video.id] == nil, errors[video.id] == nil else { continue }
+            beginRequest(video: video, question: "", automatic: true)
+            return
+        }
+    }
+
+    private func beginRequest(video: SavedVideo, question text: String, automatic: Bool) {
+        let id = video.id
         pending[id] = text
         errors[id] = nil
         busy.insert(id)
         let token = UUID()
         requestIDs[id] = token
+        if automatic { automaticRequestToken = token }
         let history = conversations[id] ?? []
         tasks[id] = Task { [weak self] in
             guard let self else { return }
+            defer { self.finishRequest(videoID: id, token: token) }
             do {
                 try Task.checkCancellation()
                 guard let key = try self.keyProvider(), !key.isEmpty else { throw SummaryFailure.missingKey }
@@ -173,14 +215,37 @@ final class SummaryStore: ObservableObject {
                     self.errors[id] = "La connessione si è interrotta o il video richiede più tempo. Controlla la rete e riprova."
                 }
             }
-            if self.requestIDs[id] == token {
-                self.busy.remove(id)
-                self.tasks[id] = nil
-            }
         }
     }
-    func cancel(videoID: String) { tasks[videoID]?.cancel() }
+
+    private func finishRequest(videoID: String, token: UUID) {
+        if requestIDs[videoID] == token {
+            busy.remove(videoID)
+            tasks[videoID] = nil
+            requestIDs[videoID] = nil
+        }
+        if automaticRequestToken == token { automaticRequestToken = nil }
+        startNextAutomaticRequest()
+    }
+
+    private func removeFromAutomaticQueue(_ videoID: String) {
+        automaticQueue.removeAll { $0.id == videoID }
+        queued.remove(videoID)
+    }
+
+    func cancel(videoID: String) {
+        automaticAttempts.insert(videoID)
+        if queued.contains(videoID) {
+            removeFromAutomaticQueue(videoID)
+            pending[videoID] = ""
+            errors[videoID] = "Richiesta interrotta. Puoi riprovare quando vuoi."
+        }
+        tasks[videoID]?.cancel()
+    }
+
     func clear(videoID: String) {
+        automaticAttempts.insert(videoID)
+        removeFromAutomaticQueue(videoID)
         tasks[videoID]?.cancel()
         tasks[videoID] = nil
         requestIDs[videoID] = nil

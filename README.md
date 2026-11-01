@@ -1,6 +1,6 @@
 # iurub
 
-Versione **1.3.0**. Client personale per iPhone, SwiftUI + WKWebView, iOS 17+. Nessun backend da configurare. I riassunti usano Gemini tramite la tua chiave OpenRouter, custodita nel Portachiavi.
+Versione **1.3.1**. Client personale per iPhone, SwiftUI + WKWebView, iOS 17+. Nessun backend da configurare. I riassunti usano Gemini tramite la tua chiave OpenRouter, custodita nel Portachiavi.
 
 ## Navigazione
 
@@ -12,11 +12,15 @@ La barra inferiore ha cinque tab, in questo ordine:
 - **Cronologia**: la cronologia YouTube dell’account.
 - **Esplora**: la normale Home di YouTube, con un segnalibro compatto nella riga dei dettagli del video.
 
+Nella pagina di un video i suggerimenti sono nascosti: sotto i dettagli resta l’accesso ai commenti di YouTube. La modifica riguarda il player, senza nascondere i video in Esplora, Iscrizioni o Salvati.
+
 La barra inferiore del sito (Home, Iscrizioni, Tu) è nascosta. La webview si estende fino al bordo inferiore, dietro la barra dell’app. In alto trovi **Indietro e Ricarica pagina** a sinistra, **Impostazioni e Tu** a destra. Tu apre la pagina personale nella sezione corrente; Indietro torna alla pagina precedente. Ricarica aggiorna la pagina che stai guardando.
 
 Un secondo tocco sulla tab già selezionata riporta alla pagina iniziale della sezione. Su **In corso** torna al video attivo senza azzerarne la posizione.
 
 Aprendo un video da una delle altre sezioni, iurub passa automaticamente a **In corso**. Le pagine di provenienza restano separate dal player: tornando dal video ritrovi la pagina e lo scorrimento precedenti. Se hai salvato il video dal player, **Salvati** viene aggiornato al ritorno per mostrare la modifica alla playlist.
+
+Il segnalibro diventa pieno quando iurub verifica che il video è in Guarda più tardi. Toccandolo di nuovo rimuovi il video dalla playlist; lo stato viene condiviso tra le tab e con il player. Iurub usa i controlli e le conferme di YouTube: un comando non confermato non viene mostrato come riuscito. La lista Salvati viene letta anche quando all’avvio si riprende un video.
 
 Salvati mostra direttamente la lista, senza la grande copertina della playlist. Ogni video ha un piccolo **cestino** nella colonna delle azioni, senza aggiungere spazio tra le righe. La rimozione viene eseguita da YouTube; il suo comando **Annulla**, quando disponibile, rimane utilizzabile. Nelle impostazioni puoi abilitare gli Shorts, nascosti inizialmente, per tutte le sezioni.
 
@@ -34,11 +38,11 @@ Il progresso viene registrato circa ogni cinque secondi durante la riproduzione,
 
 ## Riassunto e chat sul video
 
-Apri un video e, in **In corso**, tocca **Riassunto**: una modale genera il riepilogo e permette domande, esempi e approfondimenti. Ogni video conserva la propria conversazione sul dispositivo; riaprirla non rigenera il riassunto. Una richiesta in corso continua mentre la modale è chiusa. Puoi interromperla o riprovare esplicitamente dopo un errore. Nessuna richiesta parte soltanto perché guardi un video.
+Apri un video e, in **In corso**, tocca **Riassunto**: una modale genera il riepilogo e permette domande, esempi e approfondimenti. Ogni video conserva la propria conversazione sul dispositivo; riaprirla non rigenera il riassunto. Una richiesta in corso continua mentre la modale è chiusa. Puoi interromperla o riprovare esplicitamente dopo un errore. Quando aggiungi un video a Guarda più tardi e YouTube conferma il salvataggio, la preparazione del riassunto parte subito. Più salvataggi vengono accodati, con una sola richiesta automatica alla volta. Aprire la chat riusa la risposta pronta o la richiesta già in corso; se il video è ancora in coda, gli dà priorità. Un indicatore sul pulsante Riassunto segnala la preparazione. Leggere la playlist o aprire un video non genera automaticamente riassunti per tutti i video esistenti. Errori e interruzioni richiedono un nuovo tentativo esplicito; non scattano retry automatici. La coda non è conservata dopo la chiusura dell’app e iOS può sospendere le richieste quando l’app passa in background.
 
 Il modello è `google/gemini-2.5-flash`, instradato su Google AI Studio, che supporta i link YouTube come input video. Ogni domanda mantiene il video originale nel contesto, il riassunto e gli ultimi scambi. Non viene simulato il recupero di una trascrizione: Gemini analizza il contenuto audiovisivo disponibile. I video privati o con restrizioni possono non essere accessibili. Le risposte possono contenere errori; le istruzioni distinguono il contenuto del video dagli esempi aggiuntivi.
 
-La chiave si imposta in **Impostazioni → Riassunti con Gemini → Chiave OpenRouter**. È salvata nel Portachiavi, separata dai sorgenti, dall’app e dalle conversazioni. Le richieste inviano URL del video e conversazione a OpenRouter/Google e usano il credito dell’account. Il codice gestisce chiave non valida, credito esaurito, limiti di richieste, problemi di rete e risposte incomplete senza registrare credenziali.
+La chiave si imposta in **Impostazioni → Riassunti con Gemini → Chiave OpenRouter**. È salvata nel Portachiavi, separata dai sorgenti, dall’app e dalle conversazioni. Le richieste, comprese quelle avviate automaticamente dopo un salvataggio confermato, inviano URL del video e conversazione a OpenRouter/Google e usano il credito dell’account. Il codice gestisce chiave non valida, credito esaurito, limiti di richieste, problemi di rete e risposte incomplete senza registrare credenziali.
 
 Documentazione di riferimento: [OpenRouter video inputs](https://openrouter.ai/docs/guides/overview/multimodal/videos), [Gemini video understanding](https://ai.google.dev/gemini-api/docs/video-understanding).
 
@@ -63,6 +67,7 @@ npm test
 ./scripts/simulator.sh live
 TEST_RUNNER_IURUB_PLAYBACK_LIVE=1 ./scripts/simulator.sh live
 TEST_RUNNER_IURUB_SUMMARY_LIVE=1 ./scripts/simulator.sh live
+TEST_RUNNER_IURUB_LAYOUT_LIVE=1 ./scripts/simulator.sh live
 ```
 
 La suite ripetibile usa fixture, una lista locale di prova e un archivio WebKit non persistente: non legge né modifica l’account Google reale. Simula una playlist già popolata, salvataggio nel conto di prova, riavvio, rimozione, annullamento, toggle Shorts e le cinque tab. Verifica anche ordine e posizione dei controlli, refresh, ritorno alla radice al secondo tocco, dimensioni della webview e chat con risposte simulate (persistenza, domanda, errore e retry). La fixture del player copre ripresa tra tab e riavvii, posizioni distinte per video e comportamento dopo il completamento.
@@ -70,6 +75,8 @@ La suite ripetibile usa fixture, una lista locale di prova e un archivio WebKit 
 Il comando `live` richiede una sessione YouTube già autenticata. È una verifica in sola lettura della playlist, della presenza dei controlli, delle sezioni YouTube e del percorso Tu → Indietro; non cancella o aggiunge video reali. I risultati e le immagini sono allegati ai file `build/*.xcresult`. Il rapporto riporta separatamente gli esiti delle fixture, del sito reale e delle richieste Gemini.
 
 `IURUB_PLAYBACK_LIVE` aggiunge una prova di ripresa del video pubblico “Me at the zoo”, con archivio dei progressi separato da quello normale. Il test verifica posizione e durata riportate dal media reale dopo un riavvio, poi Tu → Indietro. `IURUB_SUMMARY_LIVE` abilita le richieste reali a Gemini con la chiave configurata e consuma credito OpenRouter. Le variabili sono passate a XCTest con il prefisso `TEST_RUNNER_`, come negli esempi.
+
+`IURUB_LAYOUT_LIVE` verifica sul video pubblico di prova che il riquadro Commenti apra e chiuda ancora il pannello ufficiale. Non modifica la playlist né pubblica commenti.
 
 Le fixture sono disponibili solo nelle build Debug con argomenti espliciti. L’avvio normale mostra il sito reale. `scripts/test-webkit.sh` conserva i controlli precedenti del bridge locale su macOS.
 

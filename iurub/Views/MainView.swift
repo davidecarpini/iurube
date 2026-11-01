@@ -3,6 +3,7 @@ import SwiftUI
 struct MainView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var playback: PlaybackStore
+    @EnvironmentObject private var summaries: SummaryStore
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var player = BrowserSession(saveDestination: .youtube, role: .player)
     @StateObject private var watchLater = BrowserSession(startPage: .watchLater, saveDestination: .youtube)
@@ -14,6 +15,10 @@ struct MainView: View {
     @State private var didStart = false
     @State private var openingVideoToken = UUID()
     @State private var savedNeedsRefresh = false
+    // Session-only hints come from the account UI, never the legacy local library.
+    // Missing IDs in a partially loaded playlist do not mean "not saved".
+    @State private var youtubeMembership: [String: Bool] = [:]
+    @State private var accountContextNeedsRefresh = false
 
     private var sessions: [BrowserSession] { [player, watchLater, subscriptions, history, home] }
 
@@ -32,6 +37,16 @@ struct MainView: View {
         }
         #if DEBUG
         .overlay(alignment: .topLeading) {
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
+               let data = try? JSONSerialization.data(withJSONObject: [
+                "ready": summaries.conversations.filter { !$0.value.isEmpty }.keys.sorted(),
+                "busy": summaries.busy.sorted(),
+                "counts": summaries.conversations.mapValues(\.count)
+               ]) {
+                Text(String(decoding: data, as: UTF8.self))
+                    .font(.system(size: 1)).frame(width: 1, height: 1).opacity(0.01)
+                    .accessibilityIdentifier("summaryPrefetchStatus").allowsHitTesting(false)
+            }
             if ProcessInfo.processInfo.arguments.contains("--playback-live"),
                let record = playback.current, let data = try? JSONEncoder().encode(record) {
                 // Expose actual media checkpoints to the opt-in simulator test.
@@ -45,15 +60,21 @@ struct MainView: View {
         .sheet(isPresented: $showingSettings) { SettingsView() }
         .onAppear(perform: start)
         .onReceive(settings.$shortsEnabled) { enabled in
-            for session in sessions { session.configure(shortsEnabled: enabled, savedIDs: []) }
+            configureSessions(shortsEnabled: enabled)
         }
-        .onReceive(player.$saveFeedback) { feedback in
-            if feedback != nil { savedNeedsRefresh = true }
+        .onChange(of: youtubeMembership) { _, _ in
+            configureSessions(shortsEnabled: settings.shortsEnabled)
         }
         .onChange(of: settings.shortsEnabled) { _, _ in
             if selectedTab == 0 { ensurePlayer() }
         }
         .onChange(of: selectedTab) { old, tab in
+            if accountContextNeedsRefresh {
+                accountContextNeedsRefresh = false
+                resetMembershipHints()
+                watchLater.openStartPage()
+                savedNeedsRefresh = false
+            }
             if old == 0 { player.captureProgress() }
             for (index, session) in sessions.enumerated() where index != tab { session.pause() }
             if tab == 0 { ensurePlayer() }
@@ -145,8 +166,18 @@ struct MainView: View {
     private func start() {
         for session in sessions {
             session.onOpenVideo = { video, position in openInProgress(video, startAt: position) }
-            session.configure(shortsEnabled: settings.shortsEnabled, savedIDs: [])
+            session.onYouTubeMembership = { video, saved in
+                guard !accountContextNeedsRefresh, youtubeMembership[video.id] != saved else { return }
+                youtubeMembership[video.id] = saved
+                if session !== watchLater { savedNeedsRefresh = true }
+            }
+            session.onYouTubeSaved = { video in summaries.prefetch(video: video) }
+            session.onAccountContextChanged = {
+                accountContextNeedsRefresh = true
+                resetMembershipHints()
+            }
         }
+        configureSessions(shortsEnabled: settings.shortsEnabled)
         player.onPlayback = { id, position, duration, ended in
             playback.update(videoID: id, position: position, duration: duration, ended: ended)
         }
@@ -166,14 +197,35 @@ struct MainView: View {
         }
         #endif
         if let current = playback.current, !current.completed {
+            // Read the saved list too, so the player's bookmark can reflect the
+            // signed-in account without starting summaries for existing videos.
+            watchLater.startIfNeeded()
             selectedTab = 0
         } else {
             watchLater.startIfNeeded()
         }
     }
 
+    private func configureSessions(shortsEnabled: Bool) {
+        let saved = youtubeMembership.filter(\.value).keys.sorted()
+        let removed = youtubeMembership.filter { !$0.value }.keys.sorted()
+        for session in sessions {
+            session.configure(shortsEnabled: shortsEnabled, savedIDs: saved, removedIDs: removed)
+        }
+    }
+
+    private func resetMembershipHints() {
+        youtubeMembership = [:]
+        sessions.forEach { $0.resetYouTubeMembership() }
+    }
+
     private func openInProgress(_ video: SavedVideo, startAt: Double?) {
         guard settings.shortsEnabled || !video.isShort else { return }
+        if accountContextNeedsRefresh {
+            accountContextNeedsRefresh = false
+            resetMembershipHints()
+            watchLater.openStartPage()
+        }
         if playback.current?.video.id == video.id, playback.current?.completed == false,
            startAt == nil, playerIsShowing(video.id) {
             playback.updateMetadata(video)
@@ -202,6 +254,12 @@ struct MainView: View {
 
     private func selectTab(_ tab: Int) {
         guard sessions.indices.contains(tab) else { return }
+        if accountContextNeedsRefresh {
+            accountContextNeedsRefresh = false
+            resetMembershipHints()
+            watchLater.openStartPage()
+            savedNeedsRefresh = false
+        }
         if tab != 0 { openingVideoToken = UUID() }
         if selectedTab == tab {
             if tab == 0 {
