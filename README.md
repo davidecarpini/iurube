@@ -1,70 +1,49 @@
 # iurub
 
-Un’app personale per iPhone: scegli i video su YouTube, salvali e guardali quando vuoi. SwiftUI + WKWebView, iOS 17+, nessun backend e nessuna chiave API.
+Client personale per iPhone, SwiftUI + WKWebView, iOS 17+. Nessun backend e nessuna chiave API.
 
-## Cosa fa
+## Le due tab
 
-- **Guarda più tardi**, prima tab a sinistra: lista locale persistente, ricerca per titolo/canale, ordinamento, riproduzione, condivisione link, rimozione e annullamento.
-- **Home**, seconda tab a destra: sito mobile originale di YouTube, con pulsante **+ Guarda più tardi** sulle schede video. Un pulsante nativo salva anche il video attualmente aperto.
-- **Impostazioni**, pulsante in alto: toggle **Abilita Shorts**, spento inizialmente. La scelta resta salvata dopo il riavvio.
-- Aggiunta tramite link con il pulsante **+**, anche senza visitare la Home.
-- Shorts nascosti da home, ricerche, canali e navigazione. Il toggle ripristina gli elementi; il filtro usa il DOM di YouTube e potrebbe richiedere manutenzione quando Google lo cambia.
-- La riproduzione viene messa in pausa passando alla lista, chiudendo il player o mandando l’app in background.
+- **Guarda più tardi**, a sinistra e all’avvio: la vera playlist privata dell’account YouTube con cui hai effettuato l’accesso. Si aggiorna quando torni dalla Home; il pulsante segnalibro in alto permette di ricaricarla.
+- **Home**, a destra: sito mobile YouTube, con pulsante **+ Guarda più tardi** sulle schede. Il pulsante richiama il menu di YouTube e la playlist dell’account.
+- Ogni video nella playlist ha un pulsante **Rimuovi**. La rimozione viene eseguita da YouTube; il suo comando **Annulla**, quando disponibile, rimane utilizzabile.
+- Nelle **Impostazioni** puoi abilitare gli Shorts, nascosti inizialmente. La preferenza è persistente e si applica a entrambe le tab.
 
-**La lista di iurub è locale e non sincronizza la playlist “Guarda più tardi” del tuo account YouTube.** Non occorre il login Google per salvare video. Il login nel sito incorporato può essere rifiutato da Google. Pubblicità, consenso, eventuali restrizioni di riproduzione e disponibilità dei contenuti restano quelli di YouTube. I video non vengono scaricati.
+Home e playlist condividono lo stesso archivio WebKit di cookie e sessione. Accedendo a YouTube nell’app, anche la prima tab usa quell’account. Le modifiche riguardano la playlist YouTube, visibile anche sugli altri dispositivi dello stesso account. Se non hai effettuato l’accesso, YouTube mostra la sua schermata di login.
 
-## Aprire e provare
+L’**archivio locale della versione precedente** è conservato in Impostazioni → Salvati sul dispositivo. Puoi ancora aggiungere link, cercare, riprodurre e rimuovere con annullamento. Questi link restano separati dalla playlist YouTube e non vengono trasferiti automaticamente.
 
-1. Installa **Xcode completo** dall’App Store; aprilo una volta e completa la configurazione iniziale. Installa il runtime iOS quando richiesto.
-2. Apri `iurub.xcodeproj`.
-3. Seleziona lo schema **iurub**, un simulatore iPhone e premi **Run**.
-4. Per installare sul tuo iPhone, scegli il tuo team in **Signing & Capabilities**, collega il dispositivo e selezionalo come destinazione.
+## Avvio
 
-Il progetto Xcode è già generato. Non è necessario installare XcodeGen, Node o altre dipendenze per compilare l’app. `project.yml` permette di rigenerarlo con XcodeGen se si cambia la struttura.
-
-Per eseguire test e avviare l’app nel simulatore:
+Apri `iurub.xcodeproj` in Xcode, scegli lo schema **iurub** e un simulatore iPhone, poi Run. Il progetto è già generato e non occorrono dipendenze esterne per compilare l’app.
 
 ```sh
 cd /Users/davidecarpini/apps/iurub
-./scripts/simulator.sh test
-```
-
-Solo compilazione e avvio:
-
-```sh
 ./scripts/simulator.sh run
 ```
 
-Lo script usa `DEVELOPER_DIR` se impostato, altrimenti `/Applications/Xcode.app`. Se manca un runtime iOS ne avvia il download tramite Xcode. Non inserisce credenziali e non modifica la configurazione globale di `xcode-select`.
+Lo script usa `DEVELOPER_DIR`, oppure `/Applications/Xcode.app`, e installa il runtime iOS se manca. Non cambia `xcode-select` globalmente. Per installare su un iPhone fisico scegli il tuo team in Signing & Capabilities e collega il dispositivo.
 
 ## Test
 
 ```sh
-./scripts/test-core.sh       # Modelli Swift: URL, persistenza, duplicati, errori, impostazioni
+./scripts/test-core.sh
 npm ci --ignore-scripts
-npm test                     # Bridge JS, Shorts, schede dinamiche, metadati e sicurezza URL
-./scripts/test-webkit.sh     # Integrazione reale Swift ↔ WebKit su macOS
-./scripts/simulator.sh test  # Swift Testing + XCUITest nel simulatore iOS
-./scripts/simulator.sh live  # Test opzionale sul sito YouTube reale (richiede rete)
+npm test
+./scripts/simulator.sh test
+./scripts/simulator.sh live
 ```
 
-I test UI usano `--ui-testing --reset-state --fixture` e una lista separata. Le fixture sono attivate soltanto in build Debug con questi argomenti; l’avvio normale mostra YouTube reale e una lista vuota. Nessuna fixture o credenziale viene inserita nella lista personale.
+La suite ripetibile usa fixture, una lista locale di prova e un archivio WebKit non persistente: non legge né modifica l’account Google reale. Simula una playlist già popolata, salvataggio nel conto di prova, riavvio, rimozione, annullamento e toggle Shorts.
 
-Il test `live` usa una lista di prova separata ma il sito YouTube reale: cerca un video, lo salva, verifica la persistenza dopo il riavvio e controlla l’avanzamento del player. Può cambiare esito se YouTube modifica l’interfaccia o limita l’accesso; non effettua il login. Gli screenshot sono allegati ai risultati `.xcresult` in `build/`.
+Il comando `live` richiede una sessione YouTube già autenticata. È una verifica in sola lettura della playlist, della presenza dei controlli e della navigazione fra le tab; non cancella o aggiunge video reali. I risultati e le immagini sono allegati ai file `build/*.xcresult`.
 
-Per testare un link in simulatore:
+Le fixture sono disponibili solo nelle build Debug con argomenti espliciti. L’avvio normale mostra il sito reale. `scripts/test-webkit.sh` conserva i controlli precedenti del bridge locale su macOS.
 
-```sh
-xcrun simctl openurl booted 'iurub://open?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DM7lc1UVf-VE'
-```
+## Comportamento del sito
 
-## Struttura
+L’app usa i controlli visibili di YouTube, senza leggere password o token e senza chiamare API private. Se il sito cambia un menu o richiede il login, iurub lascia disponibile il menu originale e indica come completare l’azione; non dichiara un salvataggio locale come salvataggio nell’account.
 
-- `iurub/Models`: validazione URL, metadati, storage atomico, preferenze.
-- `iurub/Web`: sessione WebKit, policy di navigazione, bridge con verifica dell’origine.
-- `iurub/Resources/YouTubeBridge.js`: filtri, pulsanti sulle schede, osservazione delle modifiche DOM.
-- `iurub/Views`: lista, Home, player e impostazioni SwiftUI.
-- `iurubTests` / `iurubUITests`: test dei modelli e flussi di interfaccia.
-- `docs/PLAN.md`, `docs/TEST-REPORT.md`: piano e verifiche effettivamente eseguite.
+Connessione, consenso, pubblicità, disponibilità dei video e login sono gestiti da YouTube. I filtri e i pulsanti dipendono dal DOM e possono richiedere manutenzione se Google lo cambia. I video non vengono scaricati. Nessun servizio di analytics è incluso.
 
-I dati vengono scritti nella cartella Application Support del contenitore dell’app, in `iurub/saved-videos.json`. Una scrittura fallita non mostra il video come salvato. Un file corrotto viene conservato e segnalato, invece di essere sovrascritto. Nessun servizio di analytics è incluso.
+Sorgenti in `iurub/`, test in `iurubTests/`, `iurubUITests/` e `scripts/tests/`. Piano e risultati effettivi in `docs/PLAN.md` e `docs/TEST-REPORT.md`.

@@ -4,5 +4,58 @@
 <ytm-video-with-context-renderer><a href="/watch?v=jfKfPfyJRdk"><div class="thumb">♫</div><h3>Musica per concentrarsi</h3></a><div class="byline">Canale di prova</div></ytm-video-with-context-renderer>
 <ytm-reel-shelf-renderer id="short-shelf"><h2>Shorts</h2><ytm-shorts-lockup-view-model><a href="/shorts/aqz-KE-bpKQ"><h3>Short di prova</h3></a></ytm-shorts-lockup-view-model></ytm-reel-shelf-renderer>
 <div id="test-controls"><button onclick="addDynamic()">Aggiungi scheda dinamica</button><button onclick="history.pushState({},'', '/shorts/aqz-KE-bpKQ')">Apri Short diretto</button></div>
-<script>function addDynamic(){if(document.getElementById('dynamic'))return;const card=document.createElement('ytm-video-with-context-renderer');card.id='dynamic';card.innerHTML='<a href="/watch?v=M7lc1UVf-VE"><div class="thumb">▶</div><h3>Video aggiunto dinamicamente</h3></a><div class="byline">Secondo canale</div>';document.body.append(card);}</script>
+<script>
+/*IURUB_FIXTURE_ACCOUNT*/
+window.fixtureAccountIDs = window.fixtureAccountIDs || [];
+if (window.fixtureStartPage === 'watchLater') {
+  document.documentElement.dataset.fixturePlaylist = 'true';
+  const titles = {'M7lc1UVf-VE':'Video già salvato nell’account','jfKfPfyJRdk':'Musica per concentrarsi'};
+  function renderPlaylist() {
+    document.body.innerHTML = '<h1>Guarda più tardi · account di prova</h1><p>Playlist YouTube simulata per i test.</p>';
+    for (const id of window.fixtureAccountIDs) {
+      const card = document.createElement('ytm-playlist-video-renderer');
+      card.innerHTML = `<a href="/watch?v=${id}"><h3>${titles[id] || 'Video di prova'}</h3></a>`;
+      const menuButton = document.createElement('button'); menuButton.textContent='⋯'; menuButton.setAttribute('aria-label','Menu azioni');
+      menuButton.onclick = () => {
+        const menu = document.createElement('div'); menu.setAttribute('role','dialog');
+        const remove = document.createElement('button'); remove.textContent='Rimuovi da Guarda più tardi';
+        remove.onclick = () => {
+          window.fixtureAccountIDs = window.fixtureAccountIDs.filter(v => v !== id);
+          window.webkit?.messageHandlers?.iurub?.postMessage({type:'fixtureAccountRemove',id});
+          menu.remove(); card.remove();
+          const toast = document.createElement('div'); toast.setAttribute('role','status'); toast.textContent='Rimosso da Guarda più tardi ';
+          const undo = document.createElement('button'); undo.textContent='Annulla';
+          undo.onclick = () => {
+            window.fixtureAccountIDs.push(id);
+            window.webkit?.messageHandlers?.iurub?.postMessage({type:'fixtureAccountSave',id});
+            renderPlaylist();
+          };
+          toast.append(undo); document.body.append(toast);
+        };
+        menu.append(remove); document.body.append(menu);
+      };
+      card.append(menuButton); document.body.append(card);
+    }
+  }
+  renderPlaylist();
+} else {
+  const card = document.querySelector('ytm-video-with-context-renderer');
+  const menuButton = document.createElement('button');
+  menuButton.setAttribute('aria-label','Menu azioni'); menuButton.textContent = '⋯';
+  menuButton.onclick = () => {
+    document.querySelector('[role="dialog"]')?.remove();
+    const menu = document.createElement('div'); menu.setAttribute('role','dialog');
+    const entry = document.createElement('button');
+    entry.textContent = window.fixtureAccountIDs.includes('jfKfPfyJRdk') ? 'Rimuovi da Guarda più tardi' : 'Salva in Guarda più tardi';
+    entry.onclick = () => {
+      window.fixtureAccountIDs.push('jfKfPfyJRdk');
+      window.webkit?.messageHandlers?.iurub?.postMessage({type:'fixtureAccountSave',id:'jfKfPfyJRdk'});
+      menu.remove();
+      const toast = document.createElement('div'); toast.setAttribute('role','status'); toast.textContent='Aggiunto a Guarda più tardi'; document.body.append(toast);
+    };
+    menu.append(entry); document.body.append(menu);
+  };
+  card.append(menuButton);
+}
+function addDynamic(){if(document.getElementById('dynamic'))return;const card=document.createElement('ytm-video-with-context-renderer');card.id='dynamic';card.innerHTML='<a href="/watch?v=M7lc1UVf-VE"><div class="thumb">▶</div><h3>Video aggiunto dinamicamente</h3></a><div class="byline">Secondo canale</div>';document.body.append(card);}</script>
 </body></html>

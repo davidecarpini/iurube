@@ -7,6 +7,8 @@ const fixture = fs.readFileSync('iurub/Resources/YouTubeFixture.html', 'utf8');
 const wait = (ms = 220) => new Promise(resolve => setTimeout(resolve, ms));
 async function setup(html = fixture, url = 'https://m.youtube.com/', config = {}) {
   const dom = new JSDOM(html, { url, runScripts:'dangerously', pretendToBeVisual:true });
+  // jsdom has no layout; production visibility still checks hidden/style state.
+  dom.window.HTMLElement.prototype.getClientRects = function() { return [{width:100,height:44}]; };
   const messages = [];
   dom.window.webkit = { messageHandlers:{ iurub:{ postMessage: m => messages.push(m) } } };
   dom.window.__iurubConfig = config;
@@ -151,5 +153,151 @@ test('does not inject controls into Google login or other origins', async () => 
     assert.equal(w.iurub, undefined);
     assert.equal(d.querySelectorAll('.iurub-save').length, 0);
     assert.equal(d.getElementById('iurub-style'), null);
+  } finally { dom.window.close(); }
+});
+
+
+test('account button uses the YouTube menu and never writes the device library', async () => {
+  const { dom, d, messages } = await setup(fixture, 'https://m.youtube.com/', {saveDestination:'youtube'});
+  try {
+    d.querySelector('.iurub-save').click();
+    await wait(400);
+    assert.ok(messages.some(m => m.type === 'fixtureAccountSave' && m.id === 'jfKfPfyJRdk'));
+    assert.ok(messages.some(m => m.type === 'youtubeSaveResult' && m.status === 'saved'));
+    assert.equal(messages.some(m => m.type === 'save'), false);
+    assert.equal(d.querySelector('.iurub-save').dataset.saved, 'false', 'local IDs cannot claim account membership');
+  } finally { dom.window.close(); }
+});
+
+test('account save never removes an existing Watch later entry', async () => {
+  const { dom, d, w, messages } = await setup(fixture, 'https://m.youtube.com/', {saveDestination:'youtube',savedIDs:['jfKfPfyJRdk']});
+  try {
+    w.fixtureAccountIDs = ['jfKfPfyJRdk'];
+    d.querySelector('.iurub-save').click();
+    await wait(300);
+    assert.ok(messages.some(m => m.type === 'youtubeSaveResult' && m.status === 'alreadySaved'));
+    assert.equal(messages.some(m => m.type === 'fixtureAccountSave'), false);
+    assert.equal(messages.some(m => m.type === 'save'), false);
+  } finally { dom.window.close(); }
+});
+
+test('account save falls back to a clear prompt when the site menu is unavailable', async () => {
+  const { dom, d, messages } = await setup('<ytm-video-with-context-renderer><a href="/watch?v=jfKfPfyJRdk"><h3>Video</h3></a></ytm-video-with-context-renderer>', 'https://m.youtube.com/', {saveDestination:'youtube'});
+  try {
+    d.querySelector('.iurub-save').click();
+    await wait();
+    assert.ok(messages.some(m => m.type === 'youtubeSaveResult' && m.status === 'manual'));
+    assert.equal(messages.some(m => m.type === 'save'), false);
+    assert.equal(d.querySelector('.iurub-save').disabled, false);
+  } finally { dom.window.close(); }
+});
+
+test('native account save selects only Watch later in the real-style playlist chooser', async () => {
+  const html = '<button id="save" aria-label="Save to playlist">Save</button>';
+  const { dom, d, w, messages } = await setup(html, 'https://m.youtube.com/watch?v=jfKfPfyJRdk', {saveDestination:'youtube'});
+  try {
+    d.getElementById('save').onclick = () => {
+      d.body.insertAdjacentHTML('beforeend', '<div role="dialog"><label><input id="other" type="checkbox">Other playlist</label><label><input id="later" type="checkbox">Watch later</label><button id="done">Done</button></div>');
+      d.getElementById('done').onclick = () => d.body.insertAdjacentHTML('beforeend','<div role="status">Added to Watch later</div>');
+    };
+    w.iurub.saveCurrentToYouTube();
+    await wait(400);
+    assert.equal(d.getElementById('later').checked, true);
+    assert.equal(d.getElementById('other').checked, false);
+    assert.ok(messages.some(m => m.type === 'youtubeSaveResult' && m.status === 'saved'));
+  } finally { dom.window.close(); }
+});
+
+test('one-tap removal delegates to the matching YouTube menu and preserves Undo', async () => {
+  const html = '<ytm-playlist-video-renderer id="one"><a href="/watch?v=jfKfPfyJRdk"><h3>First</h3></a><button aria-label="Menu Azione">Menu</button></ytm-playlist-video-renderer><ytm-playlist-video-renderer id="two"><a href="/watch?v=M7lc1UVf-VE"><h3>Second</h3></a></ytm-playlist-video-renderer>';
+  const { dom, d, messages } = await setup(html, 'https://m.youtube.com/playlist?list=WL', {saveDestination:'youtube'});
+  try {
+    const first = d.getElementById('one');
+    let removeCalls = 0;
+    first.querySelector('button[aria-label="Menu Azione"]').onclick = () => {
+      const menu = d.createElement('div'); menu.setAttribute('role','dialog');
+      const item = d.createElement('button'); item.textContent = 'Rimuovi da Guarda più tardi';
+      item.onclick = () => {
+        removeCalls++; first.remove(); menu.remove();
+        const undo = d.createElement('button'); undo.id='youtube-undo'; undo.textContent='Annulla';
+        undo.onclick=()=>{d.body.append(first);undo.remove();}; d.body.append(undo);
+      };
+      menu.append(item); d.body.append(menu);
+    };
+    assert.equal(d.querySelectorAll('.iurub-remove').length, 2);
+    assert.equal(d.querySelectorAll('.iurub-save').length, 0);
+    first.querySelector('.iurub-remove').click();
+    await wait(300);
+    assert.equal(removeCalls, 1);
+    assert.equal(d.getElementById('one'), null);
+    assert.ok(d.getElementById('two'));
+    assert.ok(messages.some(m=>m.type==='youtubeRemoveResult' && m.status==='submitted'));
+    d.getElementById('youtube-undo').click();
+    await wait();
+    assert.ok(d.getElementById('one'));
+    assert.equal(d.querySelectorAll('#one .iurub-remove').length, 1);
+  } finally { dom.window.close(); }
+});
+
+test('watch pages with a playlist parameter do not offer removal on unrelated recommendations', async () => {
+  const { dom, d } = await setup(fixture, 'https://m.youtube.com/watch?v=jfKfPfyJRdk&list=WL', {saveDestination:'youtube'});
+  try {
+    assert.equal(d.querySelectorAll('.iurub-remove').length, 0);
+    assert.ok(d.querySelector('.iurub-save'));
+  } finally { dom.window.close(); }
+});
+
+test('missing removal menu does not delete the card or modify local storage', async () => {
+  const html='<ytm-playlist-video-renderer><a href="/watch?v=jfKfPfyJRdk"><h3>Keep me</h3></a></ytm-playlist-video-renderer>';
+  const { dom, d, messages } = await setup(html, 'https://m.youtube.com/playlist?list=WL', {saveDestination:'youtube'});
+  try {
+    d.querySelector('.iurub-remove').click();
+    await wait();
+    assert.ok(d.querySelector('ytm-playlist-video-renderer'));
+    assert.ok(messages.some(m=>m.type==='youtubeRemoveResult' && m.status==='manual'));
+    assert.equal(messages.some(m=>m.type==='save'), false);
+  } finally { dom.window.close(); }
+});
+
+for (const state of ['Non selezionato', 'Selezionato', 'Stato sconosciuto']) {
+  test(`mobile toggleable playlist entry: ${state}`, async () => {
+    const html = '<ytm-video-with-context-renderer><a href="/watch?v=jfKfPfyJRdk">Video</a><button id="menu" aria-label="Menu Azione">Menu</button></ytm-video-with-context-renderer>';
+    const { dom, d, messages } = await setup(html, 'https://m.youtube.com/', {saveDestination:'youtube'});
+    try {
+      let laterClicks = 0, otherClicks = 0;
+      d.getElementById('menu').onclick = () => {
+        d.body.insertAdjacentHTML('beforeend', '<bottom-sheet-container role="dialog"><ytm-menu-item><button id="playlist">Salva in una playlist</button></ytm-menu-item></bottom-sheet-container>');
+        d.getElementById('playlist').onclick = () => {
+          d.querySelector('bottom-sheet-container').innerHTML = `<yt-sheet-view-model><toggleable-list-item-view-model><yt-list-item-view-model role="presentation"><div><button role="menuitem" id="later" aria-label="Watch later, Privata, ${state}">Watch later</button></div></yt-list-item-view-model></toggleable-list-item-view-model><toggleable-list-item-view-model><button role="menuitem" id="other" aria-label="Other, Privata, Non selezionato">Other</button></toggleable-list-item-view-model></yt-sheet-view-model>`;
+          d.getElementById('later').onclick = () => {
+            laterClicks++;
+            d.body.insertAdjacentHTML('beforeend','<div role="status">Aggiunto a Guarda più tardi</div>');
+          };
+          d.getElementById('other').onclick = () => { otherClicks++; };
+        };
+      };
+      d.querySelector('.iurub-save').click();
+      await wait(400);
+      assert.equal(laterClicks, state === 'Non selezionato' ? 1 : 0);
+      assert.equal(otherClicks, 0);
+      const status = state === 'Non selezionato' ? 'saved' : state === 'Selezionato' ? 'alreadySaved' : 'choose';
+      assert.ok(messages.some(m => m.type === 'youtubeSaveResult' && m.status === status));
+      assert.equal(messages.some(m => m.type === 'save'), false);
+    } finally { dom.window.close(); }
+  });
+}
+
+test('removal clicks the nested YouTube button rather than its noninteractive renderer', async () => {
+  const html = '<ytm-playlist-video-renderer><a href="/watch?v=jfKfPfyJRdk">Video</a><ytm-bottom-sheet-renderer><button id="menu" aria-label="Menu Azione">Menu</button></ytm-bottom-sheet-renderer></ytm-playlist-video-renderer>';
+  const { dom, d } = await setup(html, 'https://m.youtube.com/playlist?list=WL', {saveDestination:'youtube'});
+  try {
+    let removals = 0;
+    d.getElementById('menu').onclick = () => {
+      d.body.insertAdjacentHTML('beforeend','<bottom-sheet-container role="dialog"><ytm-menu-service-item-renderer><ytm-menu-item><button id="remove">Rimuovi da Guarda più tardi</button></ytm-menu-item></ytm-menu-service-item-renderer></bottom-sheet-container>');
+      d.getElementById('remove').onclick = () => { removals++; };
+    };
+    d.querySelector('.iurub-remove').click();
+    await wait(300);
+    assert.equal(removals, 1);
   } finally { dom.window.close(); }
 });

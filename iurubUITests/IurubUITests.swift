@@ -9,25 +9,34 @@ final class IurubUITests: XCTestCase {
         app.launch()
     }
 
-    func testTabsSavingFromHomePersistenceRemovalAndUndo() throws {
-        XCTAssertTrue(app.buttons["exploreButton"].waitForExistence(timeout: 5))
-        app.buttons["exploreButton"].tap()
+    func testYouTubePlaylistIsFirstTabAndAccountSavePersists() throws {
+        XCTAssertTrue(app.webViews.staticTexts["Guarda più tardi · account di prova"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.webViews.staticTexts["Video già salvato nell’account"].exists)
+        XCTAssertFalse(app.buttons["exploreButton"].exists)
+        app.tabBars.buttons["Home"].tap()
         let save = app.webViews.buttons["+ Guarda più tardi"].firstMatch
         XCTAssertTrue(save.waitForExistence(timeout: 10))
         save.tap()
-        XCTAssertTrue(app.webViews.buttons["✓ Salvato in Guarda più tardi"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Salvato in Guarda più tardi su YouTube"].waitForExistence(timeout: 5))
         app.tabBars.buttons["Guarda più tardi"].tap()
-        XCTAssertTrue(app.buttons["play-jfKfPfyJRdk"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.webViews.staticTexts["Musica per concentrarsi"].waitForExistence(timeout: 10))
+        capture("account-watch-later")
         app.terminate()
         app.launchArguments = ["--ui-testing", "--fixture"]
         app.launch()
-        XCTAssertTrue(app.buttons["play-jfKfPfyJRdk"].waitForExistence(timeout: 5))
-        app.buttons["options-jfKfPfyJRdk"].tap()
-        app.buttons["Rimuovi dalla lista"].tap()
-        XCTAssertTrue(app.buttons["exploreButton"].waitForExistence(timeout: 5))
-        app.buttons["undoRemove"].tap()
-        XCTAssertTrue(app.buttons["play-jfKfPfyJRdk"].waitForExistence(timeout: 5))
-        capture("saved-library")
+        XCTAssertTrue(app.webViews.staticTexts["Musica per concentrarsi"].waitForExistence(timeout: 10))
+        let remove = app.webViews.buttons.matching(identifier: "Rimuovi da Guarda più tardi").element(boundBy: 1)
+        XCTAssertTrue(remove.waitForExistence(timeout: 5))
+        remove.tap()
+        XCTAssertTrue(app.webViews.buttons["Annulla"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.webViews.staticTexts["Musica per concentrarsi"].exists)
+        XCTAssertTrue(app.webViews.staticTexts["Video già salvato nell’account"].exists)
+        app.webViews.buttons["Annulla"].tap()
+        XCTAssertTrue(app.webViews.staticTexts["Musica per concentrarsi"].waitForExistence(timeout: 5))
+        app.buttons["settingsButton"].tap()
+        app.buttons["deviceLibraryButton"].tap()
+        XCTAssertTrue(app.buttons["addLinkButton"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["play-jfKfPfyJRdk"].exists, "Account saves must not silently write to the local archive")
     }
 
     func testShortsTogglePersistsAndRestoresShelf() throws {
@@ -59,7 +68,10 @@ final class IurubUITests: XCTestCase {
         XCTAssertFalse(app.webViews.staticTexts["Short di prova"].exists)
     }
 
-    func testLinkValidationAndSavingWithoutGoogleLogin() throws {
+    func testLocalArchivePreservesLinksRemovalAndUndo() throws {
+        app.buttons["settingsButton"].tap()
+        app.buttons["deviceLibraryButton"].tap()
+        XCTAssertTrue(app.buttons["addLinkButton"].waitForExistence(timeout: 5))
         app.buttons["addLinkButton"].tap()
         let field = app.textFields["videoLinkField"]
         field.tap(); field.typeText("https://evil.com/watch?v=jfKfPfyJRdk")
@@ -74,6 +86,11 @@ final class IurubUITests: XCTestCase {
         app.textFields["videoTitleField"].typeText("Il mio video")
         app.buttons["confirmAddVideo"].tap()
         XCTAssertTrue(app.buttons["play-jfKfPfyJRdk"].waitForExistence(timeout: 5))
+        app.buttons["options-jfKfPfyJRdk"].tap()
+        app.buttons["Rimuovi dalla lista"].tap()
+        XCTAssertTrue(app.buttons["exploreButton"].waitForExistence(timeout: 5))
+        app.buttons["undoRemove"].tap()
+        XCTAssertTrue(app.buttons["play-jfKfPfyJRdk"].waitForExistence(timeout: 5))
     }
 
     private func capture(_ name: String) {
@@ -84,59 +101,33 @@ final class IurubUITests: XCTestCase {
     }
 }
 
-// Optional checks against the live site; excluded unless explicitly enabled.
+// Opt-in, read-only verification using the existing YouTube login.
 final class IurubLiveUITests: XCTestCase {
-    func testLiveYouTube() throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_LIVE"] == "1", "Enable IURUB_LIVE for network-dependent YouTube checks")
+    func testExistingYouTubeWatchLater() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_LIVE"] == "1", "Requires a YouTube session")
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--reset-state"]
+        app.launchArguments = []
         app.launch()
+        XCTAssertTrue(app.buttons["refreshWatchLater"].waitForExistence(timeout: 10))
+        let heading = app.webViews.staticTexts.matching(NSPredicate(format: "label == %@ OR label == %@", "Guarda più tardi", "Watch later")).firstMatch
+        XCTAssertTrue(heading.waitForExistence(timeout: 30))
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "youtube-account-watch-later"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        XCTAssertTrue(app.webViews.buttons["Rimuovi da Guarda più tardi"].firstMatch.waitForExistence(timeout: 10))
+        app.webViews.buttons["Menu Azione"].firstMatch.tap()
+        XCTAssertTrue(app.webViews.buttons["Salva in una playlist"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.webViews.buttons["Rimuovi da Guarda più tardi"].firstMatch.exists)
+        // Open the official chooser only; never toggle membership in the real account.
+        app.webViews.buttons["Salva in una playlist"].tap()
+        let selectedPlaylist = app.webViews.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND label CONTAINS[c] %@", "Watch later", "Selezionato")).firstMatch
+        XCTAssertTrue(selectedPlaylist.waitForExistence(timeout: 5))
+        app.buttons["refreshWatchLater"].tap()
         app.tabBars.buttons["Home"].tap()
-        XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 20))
-        let reject = app.webViews.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "Reject all", "Rifiuta tutto")).firstMatch
-        if !app.webViews.buttons["Search YouTube"].firstMatch.waitForExistence(timeout: 5), reject.waitForExistence(timeout: 15) { reject.tap() }
-        capture(app, "youtube-live-home")
-        app.webViews.buttons["Search YouTube"].firstMatch.tap()
-        let field = app.webViews.descendants(matching: .any).matching(NSPredicate(format: "elementType == %d OR elementType == %d", XCUIElement.ElementType.searchField.rawValue, XCUIElement.ElementType.textField.rawValue)).firstMatch
-        XCTAssertTrue(field.waitForExistence(timeout: 10))
-        field.tap()
-        field.typeText("Big Buck Bunny Blender\n")
-        let save = app.webViews.buttons["+ Guarda più tardi"].firstMatch
-        XCTAssertTrue(save.waitForExistence(timeout: 25))
-        capture(app, "youtube-live-search")
-        save.tap()
-        XCTAssertTrue(app.webViews.buttons["✓ Salvato in Guarda più tardi"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["youtubeHome"].waitForExistence(timeout: 10))
         app.tabBars.buttons["Guarda più tardi"].tap()
-        let video = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "play-")).firstMatch
-        XCTAssertTrue(video.waitForExistence(timeout: 5))
-        let videoID = video.identifier
-        capture(app, "youtube-live-library")
-        app.terminate()
-        app.launchArguments = ["--ui-testing"]
-        app.launch()
-        XCTAssertTrue(app.buttons[videoID].waitForExistence(timeout: 5))
-        app.buttons[videoID].tap()
-        XCTAssertTrue(app.buttons["closePlayer"].waitForExistence(timeout: 10))
-        let play = app.webViews.buttons.matching(NSPredicate(format: "label == %@ OR label == %@ OR label == %@", "Play", "Play video", "Riproduci")).firstMatch
-        if play.waitForExistence(timeout: 20) { play.tap() }
-        let playback = app.webViews.otherElements["YouTube Video Player"].descendants(matching: .any)
-            .matching(NSPredicate(format: "value MATCHES %@", ".*(second|minute).*" )).firstMatch
-        XCTAssertTrue(playback.waitForExistence(timeout: 25))
-        let initialTime = playback.value as? String ?? ""
-        let progress = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value != %@", initialTime), object: playback)
-        let progressResult = XCTWaiter.wait(for: [progress], timeout: 60)
-        print("LIVE PLAYBACK: \(initialTime) -> \(playback.value as? String ?? "unknown")")
-        capture(app, "youtube-live-player")
-        XCTAssertEqual(progressResult, .completed, "The live video's playback position must advance")
-        app.buttons["closePlayer"].tap()
-        XCTAssertTrue(app.buttons[videoID].waitForExistence(timeout: 5))
-    }
-
-    private func capture(_ app: XCUIApplication, _ name: String) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        add(attachment)
+        XCTAssertTrue(heading.waitForExistence(timeout: 30))
     }
 }

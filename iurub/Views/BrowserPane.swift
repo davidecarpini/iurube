@@ -7,7 +7,7 @@ struct BrowserPane: View {
     @ObservedObject var session: BrowserSession
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: AppSettings
-    let onSave: (SavedVideo) -> Void
+    var onSave: ((SavedVideo) -> Void)? = nil
     @State private var feedback: String?
     @State private var safariURL: IdentifiedURL?
     @Environment(\.openURL) private var openURL
@@ -30,9 +30,9 @@ struct BrowserPane: View {
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if let video = session.currentVideo {
-                    let saved = library.contains(video.id)
+                    let saved = session.saveDestination == .device && library.contains(video.id)
                     Button(action: session.saveCurrent) {
-                        Label(saved ? "Salvato in Guarda più tardi" : "Guarda più tardi", systemImage: saved ? "bookmark.fill" : "bookmark")
+                        Label(session.saveDestination == .youtube ? "Guarda più tardi" : (saved ? "Salvato sul dispositivo" : "Salva sul dispositivo"), systemImage: saved ? "bookmark.fill" : "bookmark")
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity).padding(.vertical, 14)
                     }
@@ -54,12 +54,13 @@ struct BrowserPane: View {
             }
             .onAppear {
                 session.onSave = { video in
-                    onSave(video)
-                    feedback = library.contains(video.id) ? "Salvato in Guarda più tardi" : (library.errorMessage ?? "Salvataggio non riuscito")
+                    onSave?(video)
+                    feedback = library.contains(video.id) ? "Salvato sul dispositivo" : (library.errorMessage ?? "Salvataggio non riuscito")
                     session.configure(shortsEnabled: settings.shortsEnabled, savedIDs: library.videos.map(\.id))
                 }
             }
             .onDisappear { session.pause(); session.onSave = nil }
+            .onReceive(session.$saveFeedback) { if let message = $0 { feedback = message } }
             .alert("iurub", isPresented: Binding(get: { session.notice != nil }, set: { if !$0 { session.notice = nil } })) {
                 Button("OK") { session.notice = nil }
             } message: { Text(session.notice ?? "") }

@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @Environment(\.dismiss) private var dismiss
+    @State private var showingDeviceLibrary = false
     var body: some View {
         NavigationStack {
             Form {
@@ -21,24 +22,24 @@ struct SettingsView: View {
                     Text("L’impostazione si applica subito alla Home, alle ricerche e ai canali. I video brevi pubblicati come video normali rimangono visibili.")
                 }
                 Section {
-                    Label("Salvati su questo dispositivo", systemImage: "internaldrive")
-                    Text("La lista di iurub è personale e locale. Non è sincronizzata con la playlist “Guarda più tardi” del tuo account YouTube.")
+                    Label("La tua playlist YouTube", systemImage: "person.crop.circle")
+                    Text("La prima tab mostra Guarda più tardi dell’account con cui hai effettuato l’accesso su YouTube. Home e playlist condividono la stessa sessione.")
                         .foregroundStyle(.secondary)
-                    Text("Puoi salvare video senza accedere a Google. Per riprodurli serve una connessione Internet.")
+                    Text("I pulsanti Guarda più tardi usano il menu di salvataggio di YouTube. Le modifiche compaiono anche negli altri dispositivi collegati allo stesso account.")
                         .foregroundStyle(.secondary)
-                } header: { Text("Guarda più tardi") }
-                Section {
-                    Text("Puoi provare ad accedere dal sito YouTube nella Home. Google potrebbe non consentire il login all’interno dell’app: la lista di iurub continuerà comunque a funzionare.")
-                        .foregroundStyle(.secondary)
-                    Link(destination: URL(string: "https://m.youtube.com/playlist?list=WL")!) {
-                        Label("Apri la tua playlist YouTube nel browser", systemImage: "safari")
-                    }
                 } header: { Text("Account YouTube") }
+                Section {
+                    Button { showingDeviceLibrary = true } label: {
+                        Label("Salvati sul dispositivo", systemImage: "internaldrive")
+                    }.accessibilityIdentifier("deviceLibraryButton")
+                } header: { Text("Archivio locale") } footer: {
+                    Text("I link salvati nella versione precedente rimangono qui. Sono separati dalla playlist del tuo account e non vengono trasferiti automaticamente.")
+                }
                 Section {
                     HStack { BrandMark(); Spacer(); Text("1.0").foregroundStyle(.secondary) }
                     Text("Scegli cosa guardare, poi prenditi il tuo tempo.")
                         .font(.subheadline).foregroundStyle(.secondary)
-                    Text("iurub conserva solo i link e i titoli che salvi. Il sito e il player YouTube restano gestiti da Google. I video non vengono scaricati.")
+                    Text("Il sito, l’account, la playlist e il player YouTube sono gestiti da Google. I video non vengono scaricati.")
                         .font(.caption).foregroundStyle(.secondary)
                 } header: { Text("iurub") }
             }
@@ -50,6 +51,7 @@ struct SettingsView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingDeviceLibrary) { DeviceLibraryScreen() }
         #if os(macOS)
         .frame(minWidth: 430, minHeight: 650)
         #endif

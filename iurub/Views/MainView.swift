@@ -1,119 +1,105 @@
 import SwiftUI
-#if os(iOS)
-import UIKit
-#endif
 
 struct MainView: View {
-    @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: AppSettings
     @Environment(\.scenePhase) private var scenePhase
-    @StateObject private var browser = BrowserSession()
+    @StateObject private var watchLater = BrowserSession(startPage: .watchLater, saveDestination: .youtube)
+    @StateObject private var home = BrowserSession(saveDestination: .youtube)
     @State private var selectedTab = 0
     @State private var showingSettings = false
-    @State private var showingAdd = false
-    @State private var playingVideo: SavedVideo?
-    @State private var blockedVideo = false
-    @State private var toast: ToastMessage?
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            LibraryView(
-                onExplore: { selectedTab = 1 },
-                onAdd: { showingAdd = true },
-                onSettings: { showingSettings = true },
-                onPlay: play,
-                onRemove: remove
-            )
-            .tabItem { Label("Guarda più tardi", systemImage: "bookmark.fill") }
-            .tag(0)
-            .accessibilityIdentifier("libraryTab")
-
-            NavigationStack {
-                BrowserPane(session: browser, onSave: save)
-                    .toolbar {
-                        ToolbarItem(placement: .principal) { BrandMark() }
-                        ToolbarItem(placement: .appLeading) {
-                            Button(action: browser.back) { Image(systemName: "chevron.left").frame(width: 32, height: 32) }
-                                .disabled(!browser.canGoBack)
-                                .accessibilityLabel("Indietro")
-                        }
-                        ToolbarItemGroup(placement: .primaryAction) {
-                            Button(action: browser.home) { Image(systemName: "house").frame(width: 32, height: 32) }
-                                .accessibilityLabel("Torna alla home YouTube")
-                            SettingsButton { showingSettings = true }
-                        }
-                    }
-                    .inlineTitle()
-            }
-            .tabItem { Label("Home", systemImage: "house.fill") }
-            .tag(1)
-            .accessibilityIdentifier("homeTab")
+            browserTab(watchLater, title: "Guarda più tardi", icon: "bookmark.fill")
+                .tabItem { Label("Guarda più tardi", systemImage: "bookmark.fill") }
+                .tag(0)
+            browserTab(home, title: "Home", icon: "house")
+                .tabItem { Label("Home", systemImage: "house.fill") }
+                .tag(1)
         }
-        .overlay(alignment: .bottom) {
-            if let toast {
-                ToastView(message: toast, onUndo: {
-                    if let video = toast.removedVideo { _ = library.restore(video) }
-                    self.toast = nil
-                })
-                .padding(.horizontal, 20)
-                .padding(.bottom, 70)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .task(id: toast.id) {
-                    try? await Task.sleep(for: .seconds(toast.removedVideo == nil ? 3 : 7))
-                    guard !Task.isCancelled else { return }
-                    withAnimation { self.toast = nil }
-                }
-            }
-        }
-        .animation(.easeInOut(duration: 0.2), value: toast?.id)
         .sheet(isPresented: $showingSettings) { SettingsView() }
-        .sheet(isPresented: $showingAdd) { AddVideoView(onSave: save) }
-        .sheet(item: $playingVideo) { video in PlayerView(video: video, onSave: save) }
-        .alert("Gli Shorts sono disattivati", isPresented: $blockedVideo) {
-            Button("Impostazioni") { showingSettings = true }
-            Button("Annulla", role: .cancel) {}
-        } message: { Text("Puoi abilitarli nelle impostazioni. Il video rimane nella tua lista.") }
+        .onAppear { watchLater.startIfNeeded() }
         .onReceive(settings.$shortsEnabled) { enabled in
-            browser.configure(shortsEnabled: enabled, savedIDs: library.videos.map(\.id))
-        }
-        .onReceive(library.$videos) { videos in
-            browser.configure(shortsEnabled: settings.shortsEnabled, savedIDs: videos.map(\.id))
+            for session in [watchLater, home] { session.configure(shortsEnabled: enabled, savedIDs: []) }
         }
         .onChange(of: selectedTab) { _, tab in
-            if tab == 1 { browser.startIfNeeded() } else { browser.pause() }
+            if tab == 0 {
+                home.pause()
+                watchLater.openStartPage()
+            } else {
+                watchLater.pause()
+                home.startIfNeeded()
+            }
         }
-        .onChange(of: showingSettings) { _, showing in if showing { browser.pause() } }
-        .onChange(of: scenePhase) { _, phase in if phase != .active { browser.pause() } }
+        .onChange(of: showingSettings) { _, showing in if showing { pauseBoth() } }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { pauseBoth() } }
         .onOpenURL { url in
             guard url.scheme == "iurub", url.host == "open",
                   let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "url" })?.value,
                   let link = VideoLink.parse(raw) else { return }
-            play(SavedVideo(link: link))
+            selectedTab = 1
+            home.load(link.url)
         }
     }
 
-    private func play(_ video: SavedVideo) {
-        if video.isShort && !settings.shortsEnabled { blockedVideo = true; return }
-        browser.pause()
-        playingVideo = video
+    private func browserTab(_ session: BrowserSession, title: String, icon: String) -> some View {
+        NavigationStack {
+            BrowserPane(session: session)
+                .toolbar {
+                    ToolbarItem(placement: .principal) { BrandMark() }
+                    ToolbarItem(placement: .appLeading) {
+                        Button(action: session.back) { Image(systemName: "chevron.left").frame(width: 32, height: 32) }
+                            .disabled(!session.canGoBack).accessibilityLabel("Indietro")
+                    }
+                    ToolbarItemGroup(placement: .primaryAction) {
+                        Button(action: session.openStartPage) { Image(systemName: icon).frame(width: 32, height: 32) }
+                            .accessibilityLabel(title == "Home" ? "Torna alla home YouTube" : "Aggiorna Guarda più tardi")
+                            .accessibilityIdentifier(title == "Home" ? "youtubeHome" : "refreshWatchLater")
+                        SettingsButton { showingSettings = true }
+                    }
+                }
+                .inlineTitle()
+        }
+    }
+
+    private func pauseBoth() { watchLater.pause(); home.pause() }
+}
+
+// Preserve the original on-device library without presenting it as the Google playlist.
+struct DeviceLibraryScreen: View {
+    @EnvironmentObject private var library: LibraryStore
+    @EnvironmentObject private var settings: AppSettings
+    @Environment(\.dismiss) private var dismiss
+    @State private var showingAdd = false
+    @State private var playingVideo: SavedVideo?
+    @State private var toast: ToastMessage?
+    @State private var blocked = false
+
+    var body: some View {
+        LibraryView(onExplore: { dismiss() }, onAdd: { showingAdd = true }, onSettings: { dismiss() },
+                    onPlay: { video in
+                        if video.isShort && !settings.shortsEnabled { blocked = true } else { playingVideo = video }
+                    }, onRemove: { video in
+                        if let removed = library.remove(video.id) { toast = ToastMessage(text: "Video rimosso dal dispositivo", removedVideo: removed) }
+                    }, isDeviceArchive: true)
+            .sheet(isPresented: $showingAdd) { AddVideoView(onSave: save) }
+            .sheet(item: $playingVideo) { PlayerView(video: $0, onSave: save) }
+            .alert("Gli Shorts sono disattivati", isPresented: $blocked) { Button("OK", role: .cancel) {} }
+            .overlay(alignment: .bottom) {
+                if let toast {
+                    ToastView(message: toast, onUndo: {
+                        if let video = toast.removedVideo { _ = library.restore(video) }
+                        self.toast = nil
+                    }).padding(20)
+                    .task(id: toast.id) {
+                        try? await Task.sleep(for: .seconds(7))
+                        if !Task.isCancelled { self.toast = nil }
+                    }
+                }
+            }
     }
     private func save(_ video: SavedVideo) {
-        if video.isShort && !settings.shortsEnabled { blockedVideo = true; return }
-        if library.contains(video.id) {
-            toast = ToastMessage(text: "È già in Guarda più tardi", removedVideo: nil)
-        } else if library.save(video) {
-            #if os(iOS)
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-            #endif
-            toast = ToastMessage(text: "Salvato in Guarda più tardi", removedVideo: nil)
-        } else {
-            toast = ToastMessage(text: library.errorMessage ?? "Salvataggio non riuscito", removedVideo: nil)
-        }
-    }
-    private func remove(_ video: SavedVideo) {
-        if let removed = library.remove(video.id) {
-            toast = ToastMessage(text: "Video rimosso", removedVideo: removed)
-        }
+        if library.save(video) { toast = ToastMessage(text: "Salvato sul dispositivo", removedVideo: nil) }
     }
 }
 
@@ -123,7 +109,7 @@ struct ToastMessage: Identifiable {
     let removedVideo: SavedVideo?
 }
 
-private struct ToastView: View {
+struct ToastView: View {
     let message: ToastMessage
     let onUndo: () -> Void
     var body: some View {

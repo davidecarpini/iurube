@@ -5,12 +5,20 @@ import WebKit
 
 @MainActor
 final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
+    enum SaveDestination: String { case device, youtube }
+    enum StartPage: String {
+        case home, watchLater
+        var url: URL { URL(string: self == .watchLater ? "https://m.youtube.com/playlist?list=WL" : "https://m.youtube.com/")! }
+    }
+    let saveDestination: SaveDestination
+    let startPage: StartPage
     @Published private(set) var isLoading = false
     @Published private(set) var canGoBack = false
     @Published private(set) var currentVideo: SavedVideo?
     @Published private(set) var loadError: String?
     @Published var notice: String?
     @Published var externalURL: URL?
+    @Published private(set) var saveFeedback: String?
     private(set) var webView: WKWebView!
     var onSave: ((SavedVideo) -> Void)?
     private var shortsEnabled = false
@@ -20,10 +28,15 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     private var lastURL: URL = URL(string: "https://m.youtube.com/")!
     private(set) var hasLoaded = false
 
-    override init() {
+    init(startPage: StartPage = .home, saveDestination: SaveDestination = .device) {
+        self.startPage = startPage
+        self.saveDestination = saveDestination
         super.init()
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--fixture") { config.websiteDataStore = .nonPersistent() }
+        #endif
         #if os(iOS)
         config.allowsInlineMediaPlayback = true
         config.allowsPictureInPictureMediaPlayback = true
@@ -72,7 +85,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     private var configurationJSON: String {
-        let data = try! JSONSerialization.data(withJSONObject: ["shortsEnabled": shortsEnabled, "savedIDs": savedIDs])
+        let data = try! JSONSerialization.data(withJSONObject: ["shortsEnabled": shortsEnabled, "savedIDs": savedIDs, "saveDestination": saveDestination.rawValue, "startPage": startPage.rawValue])
         return String(decoding: data, as: UTF8.self)
     }
 
@@ -97,13 +110,17 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     func startIfNeeded() {
         guard !hasLoaded else { return }
+        openStartPage()
+    }
+
+    func openStartPage() {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--fixture") {
             loadFixture()
             return
         }
         #endif
-        home()
+        load(startPage.url)
     }
 
     func home() { load(URL(string: "https://m.youtube.com/")!) }
@@ -135,6 +152,10 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     func saveCurrent() {
+        if saveDestination == .youtube {
+            webView.evaluateJavaScript("window.iurub?.saveCurrentToYouTube();", completionHandler: nil)
+            return
+        }
         let requestedURL = webView.url
         webView.evaluateJavaScript("window.iurub?.currentVideo();") { [weak self] value, _ in
             guard let self, self.webView.url == requestedURL else { return }
@@ -161,6 +182,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
               let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
         switch type {
         case "save":
+            guard saveDestination == .device else { return }
             guard let raw = body["video"] as? [String: Any], let video = decodeVideo(raw) else { return }
             guard shortsEnabled || !video.isShort else {
                 notice = "Abilita gli Shorts nelle impostazioni per salvare questo video."
@@ -175,6 +197,30 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
                 currentVideo = nil
             }
         case "blockedShort": notice = "Gli Shorts sono disattivati. Puoi abilitarli nelle impostazioni."
+        case "youtubeSaveResult":
+            guard saveDestination == .youtube else { return }
+            switch body["status"] as? String {
+            case "saved": saveFeedback = "Salvato in Guarda più tardi su YouTube"
+            case "alreadySaved": saveFeedback = "È già in Guarda più tardi su YouTube"
+            case "submitted": saveFeedback = "Controlla la conferma di YouTube"
+            case "choose": saveFeedback = "Seleziona Guarda più tardi nel menu YouTube"
+            default: notice = "Apri il menu del video su YouTube e scegli Guarda più tardi. Se richiesto, accedi al tuo account."
+            }
+        case "youtubeRemoveResult":
+            guard saveDestination == .youtube else { return }
+            if body["status"] as? String == "manual" {
+                notice = "Apri il menu ⋯ del video e scegli Rimuovi da Guarda più tardi."
+            }
+        #if DEBUG
+        case "fixtureAccountSave", "fixtureAccountRemove":
+            guard ProcessInfo.processInfo.arguments.contains("--fixture"), ProcessInfo.processInfo.arguments.contains("--ui-testing"),
+                  let id = body["id"] as? String, VideoLink.validID(id) else { return }
+            let defaults = UserDefaults(suiteName: "it.davidecarpini.iurub.uitests")!
+            var ids = defaults.stringArray(forKey: "fixtureAccountIDs") ?? ["M7lc1UVf-VE"]
+            if type == "fixtureAccountRemove" { ids.removeAll { $0 == id } }
+            else if !ids.contains(id) { ids.append(id) }
+            defaults.set(ids, forKey: "fixtureAccountIDs")
+        #endif
         default: break
         }
     }
@@ -234,7 +280,10 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     #if DEBUG
     private func loadFixture() {
         guard let url = Bundle.main.url(forResource: "YouTubeFixture", withExtension: "html"),
-              let html = try? String(contentsOf: url, encoding: .utf8) else { return }
+              var html = try? String(contentsOf: url, encoding: .utf8) else { return }
+        let ids = UserDefaults(suiteName: "it.davidecarpini.iurub.uitests")!.stringArray(forKey: "fixtureAccountIDs") ?? ["M7lc1UVf-VE"]
+        let data = try! JSONSerialization.data(withJSONObject: ids)
+        html = html.replacingOccurrences(of: "/*IURUB_FIXTURE_ACCOUNT*/", with: "window.fixtureAccountIDs = \(String(decoding: data, as: UTF8.self)); window.fixtureStartPage = '\(startPage.rawValue)';")
         hasLoaded = true
         webView.loadHTMLString(html, baseURL: URL(string: "https://m.youtube.com/"))
     }

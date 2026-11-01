@@ -10,6 +10,7 @@ struct LibraryView: View {
     let onSettings: () -> Void
     let onPlay: (SavedVideo) -> Void
     let onRemove: (SavedVideo) -> Void
+    var isDeviceArchive = false
 
     private var filtered: [SavedVideo] {
         let results = library.videos.filter {
@@ -59,10 +60,13 @@ struct LibraryView: View {
                     .searchable(text: $query, prompt: "Cerca tra i tuoi video")
                 }
             }
-            .navigationTitle("Guarda più tardi")
+            .navigationTitle(isDeviceArchive ? "Sul dispositivo" : "Guarda più tardi")
             .toolbar {
                 ToolbarItem(placement: .principal) { BrandMark() }
-                ToolbarItem(placement: .primaryAction) { SettingsButton(action: onSettings) }
+                ToolbarItem(placement: .primaryAction) {
+                    if isDeviceArchive { Button("Fine", action: onSettings).accessibilityIdentifier("closeDeviceLibrary") }
+                    else { SettingsButton(action: onSettings) }
+                }
                 ToolbarItem(placement: .appLeading) {
                     Button(action: onAdd) { Image(systemName: "plus").frame(width: 32, height: 32) }
                         .accessibilityLabel("Aggiungi un link")
@@ -96,12 +100,12 @@ struct LibraryView: View {
                 .font(.system(.largeTitle, design: .rounded, weight: .bold))
                 .multilineTextAlignment(.center)
                 .padding(.bottom, 16)
-            Text("Salva dalla Home i video che ti interessano.\nLi ritrovi qui, quando vuoi.")
+            Text(isDeviceArchive ? "Qui trovi i link salvati sul dispositivo.\nLa tua playlist YouTube è nella prima tab." : "Salva dalla Home i video che ti interessano.\nLi ritrovi qui, quando vuoi.")
                 .font(.body).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.bottom, 28)
             Button(action: onExplore) {
-                Label("Esplora YouTube", systemImage: "arrow.right")
+                Label(isDeviceArchive ? "Torna alle impostazioni" : "Esplora YouTube", systemImage: "arrow.right")
                     .font(.headline).frame(maxWidth: 260).padding(.vertical, 9)
             }
             .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 16))

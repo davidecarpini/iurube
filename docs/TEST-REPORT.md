@@ -1,71 +1,70 @@
-# iurub — rapporto di verifica
+# iurub — verifica playlist account e rimozione rapida
 
-1 novembre 2026 · progetto: `/Users/davidecarpini/apps/iurub`
+1 novembre 2026 · progetto `/Users/davidecarpini/apps/iurub`
 
-## Stato
+## Correzione consegnata
 
-App implementata, compilata e avviata nel simulatore **iPhone Air con iOS 27.2 (24B8117)**, usando **Xcode 27.2 (27B52)**. Il precedente blocco del primo avvio di Xcode è superato. Il monitor automatico è stato rimosso.
+La prima tab mostra ora **Guarda più tardi dell’account YouTube** già autenticato nell’app. Home e playlist condividono la sessione WebKit; tornando dalla Home la playlist si aggiorna. La lista locale della versione precedente è conservata in **Impostazioni → Salvati sul dispositivo**.
 
-La suite iOS finale ha concluso con **13 test superati, 0 fallimenti, 0 test saltati**: 10 test Swift e 3 test XCUITest. Risultati in `build/Tests-20261101-153540.xcresult`.
+Il pulsante **+ Guarda più tardi** della Home usa i menu del sito e seleziona la playlist dell’account. Gestisce sia i checkbox sia le voci selezionabili attualmente usate da YouTube mobile, senza deselezionare un video già presente. Se il menu non è riconosciuto, lascia disponibile il comando originale e indica come procedere.
 
-Anche il test live finale è **superato**: 1 scenario end-to-end, 0 fallimenti, con avanzamento del player rilevato da 1 a 2 secondi e ritorno alla lista dopo la chiusura. Risultati in `build/Tests-20261101-154434.xcresult`. Complessivamente: **14 test iOS superati nelle due esecuzioni finali**.
+Ogni riga della playlist ha un pulsante **Rimuovi**: un tocco richiama il comando di YouTube per quel video. Non viene rimossa una riga solo graficamente in anticipo. L’eventuale comando **Annulla** del sito rimane utilizzabile.
 
-## Funzioni verificate
+## Risultati finali
 
-- **Guarda più tardi** è la tab sinistra e la schermata iniziale.
-- **Home** apre il sito mobile YouTube originale. Il pulsante **+ Guarda più tardi** compare sulle schede video reali; il video aperto ha anche un pulsante nativo di salvataggio.
-- Salvataggio dalla Home e da URL, validazione dei link, deduplicazione e persistenza dopo la chiusura e il riavvio dell’app.
-- Rimozione dalla lista e annullamento.
-- Toggle **Abilita Shorts** spento inizialmente; contenuti nascosti, ripristinati quando abilitati, preferenza conservata dopo il riavvio e nuovo blocco quando disabilitati.
-- Ricerca di un video sul sito reale, salvataggio con titolo e miniatura, riapertura dalla lista dopo il riavvio e avvio della riproduzione. Nel collaudo del player è stato osservato un avanzamento fino a 25 secondi.
-
-**La lista è locale a iurub: non sincronizza la playlist del tuo account Google.** Non occorre il login per salvare video. I test utilizzano una lista separata; l’avvio normale non contiene i video dimostrativi.
-
-## Risultati
+Ambiente: **Xcode 27.2 (27B52), iPhone Air, iOS 27.2 (24B8117)**.
 
 | Verifica | Esito | Ambito |
 |---|---|---|
-| Build Debug iOS Simulator | Superata | App nativa arm64 |
-| Build Release iPhone | Superata | SDK iPhoneOS; compilazione senza firma personale |
-| Swift Testing | 10/10 superati | Eseguiti anche nel simulatore iOS |
-| XCUITest | 3/3 superati | Tab, URL, Home, persistenza, rimozione/annullamento, toggle Shorts |
-| Bridge JavaScript | 9/9 superati | jsdom, esecuzione precedente sul medesimo bridge |
-| Integrazione Swift/WebKit | 17/17 superate | WKWebView macOS, fixture e YouTube live; verifiche precedenti |
-| XCUITest YouTube live | 1/1 superato | Ricerca, salvataggio, riavvio, avanzamento del player e chiusura |
-| Login Google | Non verificato | Nessuna credenziale utilizzata |
-| iPhone fisico, fullscreen/rotazione, PiP/AirPlay | Non verificati | Non inclusi negli esiti superati |
+| Debug iOS Simulator | Superata | Compilazione, installazione e avvio della versione aggiornata |
+| Release iPhone | Superata | Compilazione per iPhoneOS senza firma personale |
+| Swift Testing | **10/10** | Modello, URL, persistenza locale, errori e preferenze |
+| XCUITest con fixture | **3/3** | Playlist account iniziale, salvataggio, riavvio, rimozione/annullamento, archivio locale, Shorts |
+| JavaScript/jsdom | **20/20** | Menu reali riprodotti, selezione corretta, rimozione della riga corretta, fallback, schede dinamiche e filtri |
+| XCUITest YouTube live | **1/1** | Sessione già autenticata, playlist reale, pulsanti, menu e selezione esistente, passaggio fra le tab |
 
-I test Swift coprono URL validi e ostili, canonicalizzazione, metadati, duplicati, persistenza, ordine, rimozione/annullamento, file corrotti, scritture fallite e impostazioni. Il bridge verifica origine, conferma del salvataggio nativo, filtri ripristinabili e schede aggiunte o riciclate.
+Totale delle due esecuzioni iOS: **14 test superati, 0 fallimenti, 0 saltati**. Nessun runtime warning segnalato nei riepiloghi Xcode.
 
-Nel collaudo è stato corretto il gesto XCUITest sul toggle: SwiftUI espone l’intera riga come interruttore, ma occorre toccare il controllo sul bordo destro. Il controllo del player è stato aggiornato per misurare l’avanzamento temporale, perché YouTube nasconde automaticamente i pulsanti di riproduzione. Lo script del simulatore seleziona ora dispositivi compatibili con il runtime e avvia i test UI senza parallelismo. Termina inoltre l’app prima del collaudo, per consentire a XCTest un avvio pulito. Durante le prove una sessione di Xcode aveva dato un timeout di lancio: riavviato il simulatore, la suite completa e il test live finale sono terminati correttamente.
+- Suite iOS: `build/Tests-20261101-160425.xcresult`.
+- Test live: `build/Tests-20261101-160613.xcresult`.
+- Log JavaScript: `work/account-bridge-final.log`.
+- Build Release: `work/account-release-final.log`.
+
+## Cosa è stato verificato
+
+La suite ripetibile parte da una playlist account simulata già popolata. Aggiunge un secondo video dalla Home, verifica che sia presente dopo il riavvio, lo rimuove con il nuovo pulsante, controlla che l’altro video rimanga e usa **Annulla** per ripristinarlo. Verifica anche che i salvataggi account non finiscano silenziosamente nell’archivio locale.
+
+Il toggle Shorts è stato verificato spento inizialmente, abilitato, conservato dopo il riavvio e nuovamente disabilitato. L’archivio locale conserva aggiunta tramite link, validazione, rimozione e annullamento.
+
+Sul sito reale è stata verificata la playlist dell’account presente nel simulatore. Sono stati aperti il menu originale della prima riga e il selettore delle playlist, senza attivare le opzioni di aggiunta o rimozione. I controlli osservati sono stati usati per aggiornare i selettori del bridge. **La cancellazione e l’annullamento completi sono stati collaudati sulla fixture, non sui video personali.**
+
+Le fixture usano un archivio WebKit non persistente e dati di prova separati. La sessione personale è stata mantenuta durante gli aggiornamenti dell’app. I controlli diagnostici temporanei sono stati rimossi dai sorgenti finali.
 
 ## Ripetere i controlli
 
 ```sh
 cd /Users/davidecarpini/apps/iurub
+npm ci --ignore-scripts
+npm test
 ./scripts/simulator.sh test
 ./scripts/simulator.sh live
 ./scripts/simulator.sh run
 ```
 
-`test` esegue la suite ripetibile con fixture locali. `live` esegue il percorso sul sito reale e richiede Internet; l’esito dipende anche dall’interfaccia e dalla disponibilità di YouTube. Entrambi mantengono separata la lista di prova. I risultati e gli screenshot allegati vengono salvati in `build/*.xcresult`.
+`test` usa fixture isolate. `live` richiede una sessione YouTube autenticata e la playlist popolata, ed esegue il controllo dei menu in italiano in sola lettura. `run` compila, installa e apre l’app normale. I risultati Xcode includono allegati acquisiti dal simulatore.
 
-`run` compila, installa e avvia l’app normale. Il progetto `iurub.xcodeproj` è già generato e non richiede dipendenze esterne per la build. Per installare su un iPhone fisico occorre impostare il proprio team Apple in Signing & Capabilities.
+## Deliverable
 
-## Screenshot e consegna
+- `iurub-sorgenti.zip`: sorgenti aggiornati, progetto Xcode, test, script e documentazione.
+- `Avvia-iurub.command` e `LEGGIMI.txt`: avvio sul Mac e istruzioni.
+- `iurub-rimozione-rapida.png`, `iurub-guarda-piu-tardi.png`, `iurub-avvio.png`: app aggiornata, vera playlist e pulsante Rimuovi.
+- `iurub-impostazioni.png`: impostazioni attuali, Shorts abilitati nella fixture di test.
+- `iurub-test-ios.json`, `iurub-test-live.json`: riepiloghi originali esportati da Xcode.
+- `iurub-test-javascript.txt`: output dei 20 test JavaScript.
+- `storico/iurub-youtube.png` e `storico/iurub-riproduzione.png`: acquisizioni del collaudo precedente, conservate come riferimento.
 
-Gli screenshot allegati sono acquisizioni originali del simulatore, senza ricostruzioni grafiche:
+## Limiti della verifica
 
-- `iurub-guarda-piu-tardi.png`: video reale salvato nella lista di prova.
-- `iurub-youtube.png`: ricerca YouTube reale e pulsante aggiunto alle schede.
-- `iurub-impostazioni.png`: impostazioni native con Shorts abilitati nel test.
-- `iurub-riproduzione.png`: fotogramma del video durante la riproduzione reale.
-- `iurub-avvio.png`: avvio normale, lista personale vuota e tab sinistra selezionata.
-- `iurub-test-ios.json`: riepilogo originale esportato da Xcode dei 13 test superati.
-- `iurub-test-live.json`: riepilogo originale del test live finale superato.
+Il player reale aveva superato il collaudo precedente con avanzamento della riproduzione; quel test non è stato ripetuto in questa correzione. Il login è stato effettuato dall’utente: è stato verificato il riuso della sessione, non il flusso di autenticazione con credenziali.
 
-`iurub-sorgenti.zip` contiene sorgenti, progetto Xcode, piano, test, script e documentazione. `Avvia-iurub.command` avvia il progetto già presente su questo Mac; `LEGGIMI.txt` contiene le istruzioni brevi.
-
-## Limiti
-
-L’app usa il sito e il player originali: rete, pubblicità, consenso e disponibilità dei contenuti rimangono gestiti da YouTube. I filtri e i pulsanti dipendono dal DOM del sito e possono richiedere aggiornamenti se Google lo modifica. L’accesso Google nella WKWebView non è garantito e non è stato collaudato. Non è stata effettuata una pubblicazione su App Store né un’installazione firmata su un iPhone fisico.
+Menu, filtri, conferme e disponibilità di Annulla dipendono dal sito YouTube e possono richiedere manutenzione quando cambia. Non sono stati verificati iPhone fisico, firma personale, fullscreen/rotazione o PiP/AirPlay. Nessuna pubblicazione su App Store è stata effettuata.
