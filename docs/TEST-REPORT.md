@@ -67,4 +67,14 @@ npm test
 
 Il player reale aveva superato il collaudo precedente con avanzamento della riproduzione; quel test non è stato ripetuto in questa correzione. Il login è stato effettuato dall’utente: è stato verificato il riuso della sessione, non il flusso di autenticazione con credenziali.
 
-Menu, filtri, conferme e disponibilità di Annulla dipendono dal sito YouTube e possono richiedere manutenzione quando cambia. Non sono stati verificati iPhone fisico, firma personale, fullscreen/rotazione o PiP/AirPlay. Nessuna pubblicazione su App Store è stata effettuata.
+Menu, filtri, conferme e disponibilità di Annulla dipendono dal sito YouTube e possono richiedere manutenzione quando cambia. Fullscreen/rotazione e PiP/AirPlay non sono stati verificati. Nessuna pubblicazione su App Store è stata effettuata.
+
+## Installazione su iPhone fisico — 1 novembre 2026
+
+**iurub 1.0.0 (build 1) è stata installata e avviata su “iPhone di Davide”, iPhone 16 Pro Max con iOS 26.6.1.**
+
+Il progetto è configurato per il Personal Team di Davide Carpini. La build Release è stata firmata con Apple Development; installazione, inventario delle app sul dispositivo e comando di avvio hanno confermato il successo. Non sono stati revocati certificati esistenti.
+
+Il profilo incorporato riporta scadenza **1 novembre 2027, ore 16:19 Europe/Rome**. La sessione YouTube del simulatore non viene trasferita sul telefono: l’accesso va effettuato nell’app sul dispositivo. L’installazione e l’avvio fisico sono verificati; i test funzionali completi restano quelli eseguiti nel simulatore.
+
+Log locali: `work/iphone-install-build-retry.log`, `work/iphone-install-result.json`, `work/iphone-launch-result.json` e `work/iphone-installed-app.json`.

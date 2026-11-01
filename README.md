@@ -22,7 +22,7 @@ cd /Users/davidecarpini/apps/iurub
 ./scripts/simulator.sh run
 ```
 
-Lo script usa `DEVELOPER_DIR`, oppure `/Applications/Xcode.app`, e installa il runtime iOS se manca. Non cambia `xcode-select` globalmente. Per installare su un iPhone fisico scegli il tuo team in Signing & Capabilities e collega il dispositivo.
+Lo script usa `DEVELOPER_DIR`, oppure `/Applications/Xcode.app`, e installa il runtime iOS se manca. Non cambia `xcode-select` globalmente. Su questo Mac è configurato il Personal Team di Davide Carpini e l’app è installata su iPhone di Davide. Per installarla da Xcode scegli il dispositivo collegato e Run. Su un altro account imposta il tuo team in Signing & Capabilities.
 
 ## Test
 
