@@ -1,3 +1,15 @@
+# iurub 1.5.0 · build 8
+
+2 novembre 2026. Nella barra di **In corso**, il pulsante Picture in Picture apre la finestra di sistema durante la riproduzione. I pulsanti **−** e **+** regolano la velocità da 0,5× a 2× a passi di 0,25×. L’indicatore legge la velocità effettiva del player.
+
+**Prove sul simulatore.** Nella verifica finale sono passati 48 test Swift e 3 XCUITest per velocità, ripresa tra tab e riavvio, e riassunti manuali (`build/PlayerControls-Final-150.xcresult`). Su iPhone Air una clip H.264 locale ha verificato il cambiamento della velocità effettiva, entrambi i limiti e il relativo blocco dei pulsanti. Un secondo test su YouTube, con “Me at the zoo”, ha cambiato la velocità del player e ripristinato il valore iniziale. I 51 test JavaScript sono passati, inclusi i casi di transizione PiP, pausa e limiti imposti dal sito. Il simulatore non supporta la finestra PiP di sistema: in quell’ambiente è verificato il messaggio di indisponibilità.
+
+**Prova PiP precedente alla scelta di usare solo il simulatore.** Con una clip di test su iPhone 16 Pro Max, il video è passato da 3 a 10 secondi mentre era aperta un’altra app ed è tornato nel player al rientro. Prova su copia isolata, rimossa assieme al runner. Per le verifiche future si usa solo il simulatore.
+
+**Distribuzione.** Archivio definitivo: `build/Distribution/iurub-1.5.0-8-final.xcarchive`. Firma verificata; nessuna chiave OpenRouter o clip di test nel pacchetto. Commit dei sorgenti: `5df6945`. Apple ha ricevuto la build alle 14:29, ora italiana. TestFlight conferma la versione 1.5.0 (8) assegnata al gruppo interno **Internals** (1 invito). [Apri la build](https://appstoreconnect.apple.com/apps/6829671295/testflight/ios/81052e6d-89cc-428d-b527-d0e5e859fc50).
+
+---
+
 # iurub 1.4.1 · build 7
 
 2 novembre 2026. In **Impostazioni → Riassunti con Gemini** il toggle **Riassunto automatico nei Salvati** è spento per impostazione iniziale, anche aggiornando dalla versione precedente. In modalità manuale, un video salvato o aperto attende il tocco su **Riassunto**. Attivando il toggle, i nuovi salvataggi confermati da YouTube avviano il riassunto. La preferenza viene conservata al riavvio. Disattivarla rimuove le richieste automatiche ancora in coda e lascia terminare quelle già avviate.
