@@ -4,7 +4,7 @@
 
 **Verifica.** Superati 48 test Swift e 3 XCUITest su iPhone Air. La prova manuale salva il video, lo riapre da Salvati, verifica lo stato “Da preparare” e ottiene il testo dopo il tocco su Riassunto. La prova automatica verifica che la risposta sia pronta prima di aprire la chat. Sono stati verificati anche la persistenza della preferenza, il cambio di modello e lo svuotamento della coda. Le prove hanno usato risposte simulate. Risultati in `build/AutoSummary-141.xcresult`.
 
-**Distribuzione.** Archivio Release firmato e verificato in `build/Distribution/iurub-1.4.1-7.xcarchive`. Al primo invio Xcode ha richiesto di autenticare nuovamente l’Apple Account del team. La versione 1.4.0 (6) rimane l’ultima disponibilità TestFlight verificata, in attesa del nuovo caricamento.
+**Distribuzione.** Archivio Release firmato e verificato in `build/Distribution/iurub-1.4.1-7.xcarchive`. Xcode ha completato il caricamento il 2 novembre alle 14:08 (ora italiana). App Store Connect conferma la build 7 disponibile per il gruppo interno Internals (1 invito). Dettaglio: https://appstoreconnect.apple.com/apps/6829671295/testflight/ios/a9a357ed-662b-4489-8a91-f3e0e9d1246e
 
 ---
 
