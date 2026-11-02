@@ -1,3 +1,15 @@
+# iurub 1.7.0 · build 11
+
+**Esplora e Salvati.** Il menu originale e il segnalibro condividono la riga del titolo. Il segnalibro occupa un proprio spazio a destra dei tre puntini. In Esplora, sul sito YouTube in italiano, il simulatore ha verificato che entrambi fossero toccabili, allineati e senza sovrapposizioni. Il salvataggio e la rimozione sono stati provati con la playlist di test.
+
+**In corso.** Il titolo resta visibile al ritorno da Salvati. La miniatura usa lo stesso player alla stessa larghezza di pagina. Nella prova con “Big Buck Bunny” la riproduzione è passata da 40,46 a 50,48 secondi durante l’uso di Esplora. Rientrando dalla miniatura, la prova ha verificato che il titolo fosse interamente visibile sotto il video.
+
+**Commenti.** Con “Me at the zoo”, il simulatore ha aperto automaticamente la conversazione ufficiale sotto il titolo. Il test ha rilevato almeno tre commenti caricati e verificato che uno swipe mostrasse commenti successivi. La prova copre anche il ritorno da Salvati con il video in pausa. Una prova separata controlla che, dopo la chiusura manuale, l’elenco si riapra automaticamente soltanto passando a un altro video.
+
+**Verifica del 2 novembre 2026.** Superati 60 test JavaScript, 48 test Swift e 6 prove di interfaccia nel simulatore iPhone Air con iOS 27.2. Risultati in `build/WatchRelease-170.xcresult` e `work/watch-170/bridge-final.log`.
+
+---
+
 # iurub 1.6.1 · build 10
 
 Il sito presenta la propria conferma di salvataggio o rimozione e il suo comando Annulla. Il segnalibro riconosce anche il messaggio con miniatura «Salvato in Guarda più tardi» in un normale elemento della pagina, con testo suddiviso in più parti o apparso in ritardo. Un timeout dell’interfaccia avvia un controllo della playlist. Il solo invio di un comando non avvia un riassunto a pagamento.

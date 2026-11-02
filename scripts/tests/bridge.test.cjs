@@ -379,7 +379,7 @@ test('compact bookmark shares the real mobile metadata row with the original men
     const card = d.querySelector('ytm-video-with-context-renderer');
     const button = card.querySelector('.iurub-save');
     assert.equal(button.parentElement, card.querySelector('.media-item-info'));
-    assert.equal(button.nextElementSibling, card.querySelector('.media-item-menu'));
+    assert.equal(button.previousElementSibling, card.querySelector('.media-item-menu'));
     assert.equal(card.querySelectorAll(':scope > .iurub-save').length, 0);
     assert.equal(button.getAttribute('aria-label'), '+ Guarda più tardi');
     assert.equal(button.querySelector('svg').getAttribute('aria-hidden'), 'true');
@@ -390,13 +390,13 @@ test('compact bookmark shares the real mobile metadata row with the original men
   } finally { dom.window.close(); }
 });
 
-test('compact removal stays in the existing playlist action column instead of below the thumbnail', async () => {
+test('compact removal follows the original playlist menu in the same row', async () => {
   const html = '<ytm-playlist-video-renderer><div class="YtmCompactMediaItemHost"><a href="/watch?v=jfKfPfyJRdk"><div>Thumbnail</div></a><div><h3>Video title</h3></div><ytm-bottom-sheet-renderer class="YtmCompactMediaItemMenu"><button aria-label="Menu Azione">Menu</button></ytm-bottom-sheet-renderer></div></ytm-playlist-video-renderer>';
   const { dom, d, w } = await setup(html, 'https://m.youtube.com/playlist?list=WL', {saveDestination:'youtube'});
   try {
     const card = d.querySelector('ytm-playlist-video-renderer');
     const button = card.querySelector('.iurub-remove');
-    assert.equal(button.parentElement, card.querySelector('.YtmCompactMediaItemMenu'));
+    assert.equal(button.previousElementSibling, card.querySelector('.YtmCompactMediaItemMenu'));
     assert.equal(card.querySelectorAll(':scope > .iurub-remove').length, 0);
     assert.equal(w.getComputedStyle(button).height, '44px');
     assert.equal(w.getComputedStyle(button).margin, '0px');
@@ -1062,5 +1062,41 @@ test('official account controls invalidate hints without reading credentials or 
     assert.equal(membershipMessages(messages).length, 0);
     const event = messages.find(message=>message.type==='youtubeAccountContextChanged');
     assert.deepEqual(Object.keys(event), ['type']);
+  } finally { dom.window.close(); }
+});
+
+test('the player opens comments for each watch video and respects a manual close', async () => {
+  const teaser = '<ytm-comments-entry-point-header-renderer><button id="comments">Commenti</button></ytm-comments-entry-point-header-renderer>';
+  let opens = 0;
+  const { dom, d, w } = await setup(teaser, 'https://m.youtube.com/watch?v=jfKfPfyJRdk', {trackPlayback:true}, win => {
+    win.document.getElementById('comments').onclick = () => {
+      opens++;
+      win.document.body.insertAdjacentHTML('beforeend', '<ytm-engagement-panel><ytm-engagement-panel-section-list-renderer class="engagement-panel-comments-section"><ytm-comment-thread-renderer>First</ytm-comment-thread-renderer><ytm-comment-thread-renderer>Second</ytm-comment-thread-renderer></ytm-engagement-panel-section-list-renderer></ytm-engagement-panel>');
+    };
+  });
+  try {
+    assert.equal(opens, 1);
+    assert.equal(d.querySelectorAll('ytm-comment-thread-renderer').length, 2);
+    assert.ok(d.documentElement.classList.contains('iurub-inline-comments'));
+    d.querySelector('ytm-engagement-panel').remove();
+    w.iurub.configure({trackPlayback:true});
+    await wait(1650);
+    assert.equal(opens, 1);
+    assert.ok(!d.documentElement.classList.contains('iurub-inline-comments'));
+    w.history.pushState({}, '', '/watch?v=aqz-KE-bpKQ');
+    await wait();
+    assert.equal(opens, 2);
+    assert.ok(d.documentElement.classList.contains('iurub-inline-comments'));
+  } finally { dom.window.close(); }
+});
+
+test('a delayed comments entry opens without selecting adjacent carousel actions', async () => {
+  const {dom, d} = await setup('<main></main>', 'https://m.youtube.com/watch?v=jfKfPfyJRdk', {trackPlayback:true});
+  try {
+    const clicks = [];
+    d.querySelector('main').innerHTML = '<yt-video-metadata-carousel-view-model><button>Capitoli</button><button aria-label="Commenti">Commenti</button><yt-carousel-item-view-model><comments-entry-point-teaser-view-model>Una preview</comments-entry-point-teaser-view-model></yt-carousel-item-view-model></yt-video-metadata-carousel-view-model>';
+    d.querySelectorAll('button').forEach(n => n.onclick = () => clicks.push(n.textContent));
+    await wait();
+    assert.deepEqual(clicks, ['Commenti']);
   } finally { dom.window.close(); }
 });

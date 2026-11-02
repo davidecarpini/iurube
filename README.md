@@ -1,6 +1,6 @@
 # iurub
 
-Versione **1.6.1**. Client personale per iPhone, SwiftUI + WKWebView, iOS 17+. Nessun backend da configurare. I riassunti usano Gemini tramite la tua chiave OpenRouter, custodita nel Portachiavi.
+Versione **1.7.0**. Client personale per iPhone, SwiftUI + WKWebView, iOS 17+. Nessun backend da configurare. I riassunti usano Gemini tramite la tua chiave OpenRouter, custodita nel Portachiavi.
 
 ## Navigazione
 
@@ -10,9 +10,9 @@ La barra inferiore ha cinque tab, in questo ordine:
 - **Salvati**: Guarda più tardi del tuo account YouTube, aperto all’avvio quando non c’è un video incompleto da riprendere.
 - **Iscrizioni**: i video dei canali a cui sei iscritto.
 - **Cronologia**: la cronologia YouTube dell’account.
-- **Esplora**: la normale Home di YouTube, con un segnalibro compatto nella riga dei dettagli del video.
+- **Esplora**: la normale Home di YouTube, con il segnalibro a destra dei tre puntini nella riga del titolo.
 
-Nella pagina di un video i suggerimenti sono nascosti: sotto i dettagli resta l’accesso ai commenti di YouTube. La modifica riguarda il player, senza nascondere i video in Esplora, Iscrizioni o Salvati.
+Quando apri un video, iurub mostra i commenti disponibili sotto il titolo. Scorri la conversazione per leggere altri commenti e aprire le risposte. Puoi chiuderla con la × e riaprirla dall’anteprima di YouTube. Tornando da Salvati a In corso ritrovi il titolo e la posizione di riproduzione.
 
 La barra inferiore del sito (Home, Iscrizioni, Tu) è nascosta. La webview si estende fino al bordo inferiore, dietro la barra dell’app. In alto trovi **Indietro e Ricarica pagina** a sinistra, **Impostazioni e Tu** a destra. Tu apre la pagina personale nella sezione corrente; Indietro torna alla pagina precedente. Ricarica aggiorna la pagina che stai guardando.
 

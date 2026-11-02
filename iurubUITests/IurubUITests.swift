@@ -281,14 +281,11 @@ final class IurubUITests: XCTestCase {
         let refreshed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: removedRow)
         XCTAssertEqual(XCTWaiter.wait(for: [refreshed], timeout: 6), .completed)
         app.tabBars.buttons["In corso"].tap()
-        let comments = app.webViews.buttons["Commenti"]
-        XCTAssertTrue(comments.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.webViews.staticTexts["Musica per concentrarsi"].firstMatch.isHittable)
         let recommendations = app.webViews.staticTexts["Video suggerito da nascondere"]
         let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: recommendations)
         XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed)
-        revealInWebView(comments)
-        comments.tap()
-        let comment = app.webViews.staticTexts["Questo commento resta accessibile."]
+        let comment = app.webViews.staticTexts["Secondo commento completo."]
         XCTAssertTrue(comment.waitForExistence(timeout: 5))
         revealInWebView(comment)
         XCTAssertTrue(comment.isHittable)
@@ -592,11 +589,11 @@ final class IurubLiveUITests: XCTestCase {
         XCTAssertTrue(source.label.hasPrefix(name + " · "), "Show the model and actual charge")
     }
 
-    private func openPlayingPublicVideo() throws -> (XCUIApplication, () -> Double?) {
+    private func openPlayingPublicVideo(checkLayout: Bool = false) throws -> (XCUIApplication, () -> Double?) {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_PLAYBACK_LIVE"] == "1", "Requires public YouTube playback")
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["--playback-live"]
+        app.launchArguments = checkLayout ? ["--playback-live", "--watch-layout-probe"] : ["--playback-live"]
         app.launch()
         app.open(try XCTUnwrap(URL(string: "iurub://open?url=https%3A%2F%2Fm.youtube.com%2Fwatch%3Fv%3Daqz-KE-bpKQ%26t%3D30s")))
         func position() -> Double? {
@@ -620,7 +617,7 @@ final class IurubLiveUITests: XCTestCase {
     }
 
     func testPublicVideoContinuesAcrossTabs() throws {
-        let (app, position) = try openPlayingPublicVideo()
+        let (app, position) = try openPlayingPublicVideo(checkLayout: true)
         app.tabBars.buttons["Salvati"].tap()
         XCTAssertTrue(app.buttons["miniPlayerExpand"].waitForExistence(timeout: 5))
         app.tabBars.buttons["Esplora"].tap()
@@ -633,6 +630,8 @@ final class IurubLiveUITests: XCTestCase {
         capture("youtube-mini-player-esplora", app: app)
         app.buttons["miniPlayerExpand"].tap()
         XCTAssertTrue(app.tabBars.buttons["In corso"].isSelected)
+        waitForLayout(in: app) { $0["titleVisible"] as? Bool == true }
+        capture("playing-title-after-return", app: app)
     }
 
     func testBackgroundOnPublicYouTubeVideo() throws {
@@ -690,6 +689,17 @@ final class IurubLiveUITests: XCTestCase {
         waitForExpectations(timeout: 8)
     }
 
+    private func layout(in app: XCUIApplication) -> [String: Any] {
+        let status = app.staticTexts["watchLayoutStatus"]
+        guard status.exists, let data = status.label.data(using: .utf8) else { return [:] }
+        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+    }
+
+    private func waitForLayout(in app: XCUIApplication, _ matches: @escaping ([String: Any]) -> Bool) {
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in matches(self.layout(in: app)) }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 30), .completed, "Watch layout: \(layout(in: app))")
+    }
+
     func testRealVideoCommentsRemainAccessible() throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_LAYOUT_LIVE"] == "1", "Requires the public YouTube watch page")
         continueAfterFailure = false
@@ -697,15 +707,28 @@ final class IurubLiveUITests: XCTestCase {
         app.launchArguments = ["--playback-live", "--start-video-at-8", "--pause-restored-video", "--watch-layout-probe"]
         app.launch()
         XCTAssertTrue(app.buttons["summaryButton"].waitForExistence(timeout: 30))
-        let comments = app.webViews.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH[c] %@", "Commenti")).firstMatch
-        XCTAssertTrue(comments.waitForExistence(timeout: 30))
-        capture("real-watch-comments-entry", app: app)
-        comments.tap()
-        let close = app.webViews.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "Chiudi", "Close")).firstMatch
-        XCTAssertTrue(close.waitForExistence(timeout: 15), "The official comments panel must open")
+        waitForLayout(in: app) { ($0["threads"] as? Int ?? 0) >= 3 && $0["titleVisible"] as? Bool == true && ($0["lastVisible"] as? Int ?? -1) >= 0 }
         capture("real-watch-comments-open", app: app)
-        close.tap()
-        XCTAssertTrue(app.buttons["summaryButton"].exists)
+        let before = try XCTUnwrap(layout(in: app)["lastVisible"] as? Int)
+        let page = app.webViews["youtube-player"]
+        let bottom = page.coordinate(withNormalizedOffset: CGVector(dx: 0.48, dy: 0.95))
+        let higher = page.coordinate(withNormalizedOffset: CGVector(dx: 0.48, dy: 0.55))
+        bottom.press(forDuration: 0.08, thenDragTo: higher)
+        waitForLayout(in: app) { ($0["lastVisible"] as? Int ?? -1) > before }
+        capture("real-watch-more-comments", app: app)
+        app.tabBars.buttons["Salvati"].tap()
+        app.tabBars.buttons["In corso"].tap()
+        waitForLayout(in: app) { $0["titleVisible"] as? Bool == true }
+        capture("real-watch-return-title", app: app)
+        app.tabBars.buttons["Esplora"].tap()
+        let feed = app.webViews["youtube-home"]
+        let bookmark = feed.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "+ Guarda più tardi", "Rimuovi da Guarda più tardi")).firstMatch
+        let menu = feed.buttons.matching(NSPredicate(format: "label IN %@", ["Altre azioni", "More actions", "Menu Azione", "Action menu"])).firstMatch
+        XCTAssertTrue(bookmark.waitForExistence(timeout: 25))
+        XCTAssertTrue(menu.isHittable && bookmark.isHittable)
+        XCTAssertLessThanOrEqual(menu.frame.maxX, bookmark.frame.minX)
+        XCTAssertEqual(menu.frame.midY, bookmark.frame.midY, accuracy: 4)
+        capture("real-explore-actions", app: app)
     }
 
     func testRealVideoResumeAfterRestart() throws {

@@ -377,6 +377,10 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         webView.evaluateJavaScript("window.iurub?.setMiniPlayer(\(enabled));", completionHandler: nil)
     }
 
+    func returnToWatchPage() {
+        webView.evaluateJavaScript("window.iurub?.returnToWatchPage();", completionHandler: nil)
+    }
+
     func prepareBackgroundPlayback(leavingApp: Bool = false) {
         guard role == .player, let id = currentVideo?.id, VideoLink.validID(id) else { return }
         if leavingApp && isPlaying { departingPlayingID = id }
@@ -625,14 +629,6 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         loadError = nil
         urlDidChange(webView.url)
         webView.evaluateJavaScript("window.iurub?.configure(\(configurationJSON));", completionHandler: nil)
-        #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--watch-layout-probe"), role == .player {
-            Task { [weak self] in
-                try? await Task.sleep(for: .seconds(5))
-                self?.captureWatchLayout()
-            }
-        }
-        #endif
     }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { handle(error) }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { handle(error) }
@@ -646,28 +642,28 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     #if DEBUG
-    /// Structural diagnostics for the opt-in live layout test. No cookies, tokens,
-    /// account identifiers, comment text or page HTML are exported.
-    private func captureWatchLayout() {
-        guard let url = webView.url, VideoLink.parse(url.absoluteString) != nil else { return }
+    /// Geometry only. The opt-in simulator test can verify a visible title and
+    /// independently scrolling comments without exporting account or comment text.
+    func watchLayoutStatus() async -> String {
         let script = """
         (() => {
-          const shape = n => ({tag:n.tagName, cls:typeof n.className==='string'?n.className:'',
-            shown:!!(n.getBoundingClientRect().width && n.getBoundingClientRect().height),
-            rect:n.getBoundingClientRect().toJSON()});
-          const ancestors = n => { const chain=[]; for(let i=0;n&&i<7;i++,n=n.parentElement) chain.push(shape(n)); return chain; };
-          return JSON.stringify({
-            path:location.pathname,
-            regions:Array.from(document.querySelectorAll('*')).filter(n=>/watch|comment|related|recommend|secondary/i.test(n.tagName+' '+n.className)).slice(0,160).map(n=>({...shape(n),children:Array.from(n.children).map(shape)})),
-            videoCards:Array.from(document.querySelectorAll('a[href*="/watch?v="]')).slice(0,10).map(ancestors)
-          });
+          const title = document.querySelector('meta[property="og:title"]')?.content || document.title.replace(/ - YouTube$/, '');
+          const titleNode = [...document.querySelectorAll('ytm-slim-video-metadata-section-renderer *,h1')].find(n =>
+            n.textContent.trim() === title && n.getBoundingClientRect().height > 0);
+          const rect = titleNode?.getBoundingClientRect(), video = document.querySelector('#movie_player video')?.getBoundingClientRect();
+          const panel = document.querySelector('ytm-engagement-panel .engagement-panel-comments-section');
+          const scroller = panel?.querySelector('.engagement-panel-content-wrapper');
+          const threads = Array.from(panel?.querySelectorAll('ytm-comment-thread-renderer') || []);
+          const top = Math.max(scroller?.getBoundingClientRect().top || 0, video?.bottom || 0);
+          const last = threads.reduce((last, n, i) => {
+            const r = n.getBoundingClientRect();
+            return r.height > 0 && r.bottom > top && r.top < innerHeight ? i : last;
+          }, -1);
+          return JSON.stringify({titleVisible:!!(rect && video && rect.top >= video.bottom - 2 && rect.bottom <= innerHeight),
+            threads:threads.length,lastVisible:last});
         })()
         """
-        webView.evaluateJavaScript(script) { value, _ in
-            guard let json = value as? String else { return }
-            let file = FileManager.default.temporaryDirectory.appendingPathComponent("iurub-watch-layout.json")
-            try? json.write(to: file, atomically: true, encoding: .utf8)
-        }
+        return (try? await webView.evaluateJavaScript(script)) as? String ?? ""
     }
 
     private func loadPlaybackFixture(_ video: SavedVideo) {

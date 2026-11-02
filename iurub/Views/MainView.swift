@@ -13,6 +13,9 @@ struct MainView: View {
     @State private var selectedTab = 1
     @State private var showingSettings = false
     @State private var didStart = false
+    #if DEBUG
+    @State private var watchLayout = ""
+    #endif
     @State private var floating = false
     @State private var openingVideoToken = UUID()
     // Session-only hints come from the account UI, never the legacy local library.
@@ -52,6 +55,17 @@ struct MainView: View {
                     .font(.system(size: 1)).frame(width: 1, height: 1).opacity(0.01)
                     .accessibilityIdentifier("summaryPrefetchStatus").allowsHitTesting(false)
             }
+            if ProcessInfo.processInfo.arguments.contains("--watch-layout-probe"), selectedTab == 0 {
+                Text(watchLayout)
+                    .font(.system(size: 1)).frame(width: 1, height: 1).opacity(0.01)
+                    .accessibilityIdentifier("watchLayoutStatus").allowsHitTesting(false)
+                    .task {
+                        while !Task.isCancelled {
+                            watchLayout = await player.watchLayoutStatus()
+                            try? await Task.sleep(for: .milliseconds(500))
+                        }
+                    }
+            }
             if ProcessInfo.processInfo.arguments.contains("--playback-live"),
                let record = playback.current, let data = try? JSONEncoder().encode(record) {
                 // Expose actual media checkpoints to the opt-in simulator test.
@@ -88,7 +102,7 @@ struct MainView: View {
             }
             if tab == 0 {
                 floating = false
-                player.setMiniPlayer(false)
+                player.returnToWatchPage()
                 player.returnFromPictureInPicture()
                 ensurePlayer()
             }
@@ -344,6 +358,7 @@ private struct PersistentVideoSurface: View {
     let floating: Bool
     let expand: () -> Void
     let close: () -> Void
+    @State private var lastPageSize: CGSize = .zero
 
     var body: some View {
         GeometryReader { geometry in
@@ -356,8 +371,16 @@ private struct PersistentVideoSurface: View {
             let small = !inPlayer && floating && !session.isDetached
             let rect = inline ? CGRect(x: full.minX, y: full.minY, width: full.width,
                                        height: min(full.height, max(1, controlsTop - full.minY))) : mini
+            // Keep WebKit at the watch-page size. Reflowing YouTube at thumbnail
+            // width leaves its sticky video overlapping the title when expanded.
+            let page = inline ? rect.size : (lastPageSize == .zero ? geometry.size : lastPageSize)
+            let scale = small ? rect.width / max(1, page.width) : 1
             ZStack(alignment: .topTrailing) {
                 YouTubeWebView(session: session, hidesWebAccessibility: !inline)
+                    .frame(width: page.width, height: page.height)
+                    .scaleEffect(scale, anchor: .topLeading)
+                    .frame(width: rect.width, height: rect.height, alignment: .topLeading)
+                    .clipped()
                     .allowsHitTesting(inline)
                     .accessibilityHidden(!inline)
                 if inline && session.isLoading {
@@ -372,6 +395,9 @@ private struct PersistentVideoSurface: View {
                     }
                     .accessibilityLabel("Chiudi mini player").accessibilityIdentifier("miniPlayerClose")
                 }
+            }
+            .onChange(of: inline ? rect.size : .zero, initial: true) { _, size in
+                if size.width > 0 && size.height > 0 { lastPageSize = size }
             }
             .buttonStyle(.plain)
             .frame(width: max(1, rect.width), height: max(1, rect.height))

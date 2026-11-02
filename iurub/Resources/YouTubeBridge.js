@@ -77,7 +77,7 @@
       html.iurub-mini, html.iurub-mini body { background:#000 !important; overflow:hidden !important; }
       html.iurub-mini [data-iurub-player-path] { position:static !important; transform:none !important; contain:none !important; clip-path:none !important; overflow:visible !important; }
       html.iurub-mini [data-iurub-player-path] > :not([data-iurub-player-path]):not([data-iurub-mini-video]) { visibility:hidden !important; }
-      html.iurub-mini video[data-iurub-mini-video] { position:fixed !important; inset:0 !important; z-index:2147483647 !important; width:100% !important; height:100% !important; max-width:none !important; max-height:none !important; margin:0 !important; transform:none !important; object-fit:contain !important; visibility:visible !important; background:black; }
+      html.iurub-mini video[data-iurub-mini-video] { position:fixed !important; inset:0 !important; z-index:2147483647 !important; width:100% !important; height:min(100%,56.25vw) !important; max-width:none !important; max-height:none !important; margin:0 !important; transform:none !important; object-fit:contain !important; visibility:visible !important; background:black; }
 
       html.iurub-watch-page [data-iurub-watch-recommendations] { display:none !important; }
       html.iurub-no-shorts ${SHORT_SHELF.split(',').join(',html.iurub-no-shorts ')} { display:none !important; }
@@ -105,13 +105,22 @@
       :is(.iurub-save,.iurub-remove)[data-saved="true"] svg { fill:currentColor; }
       :is(.iurub-save,.iurub-remove)::before { background:transparent; }
       .iurub-action-label { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
-      .iurub-inline-details { display:flex !important; align-items:flex-start; }
-      .iurub-inline-details > .media-item-metadata, .iurub-inline-details > .ytLockupMetadataViewModelTextContainer { flex:1 1 auto; min-width:0; }
-      .iurub-inline-details > .iurub-save { align-self:flex-start; }
-      .iurub-stacked-menu { display:flex !important; flex-direction:column; align-items:center; flex-shrink:0; overflow:visible; }
-      .iurub-compact-card { position:relative; }
-      .iurub-compact-card > .iurub-save, .iurub-compact-card > .iurub-remove { position:absolute; right:4px; bottom:4px; }
-      .iurub-compact-card > a > h3, .iurub-compact-card > h3, .iurub-compact-card > .byline { padding-inline-end:48px; }
+      .iurub-inline-details { display:flex !important; align-items:flex-start; min-width:0; }
+      .iurub-inline-details > :is(.media-item-metadata,.ytLockupMetadataViewModelTextContainer,.yt-lockup-metadata-view-model__text-container) { flex:1 1 0% !important; min-width:0; margin-inline-end:0 !important; }
+      .iurub-inline-details > .iurub-native-menu { position:relative !important; inset:auto !important; margin:0 !important; flex:0 0 44px !important; width:44px !important; height:44px; display:flex !important; justify-content:center; align-items:center; }
+      .iurub-inline-details > .iurub-native-menu :is(button,[role="button"]) { margin:0 !important; }
+      .iurub-inline-details > :is(.iurub-save,.iurub-remove) { align-self:flex-start; }
+      .iurub-minimal-card:not([data-iurub-watch-recommendations]):not([data-iurub-short]) { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:start; }
+      .iurub-minimal-card > :not(.iurub-native-menu,.iurub-save,.iurub-remove) { grid-column:1; }
+      .iurub-minimal-card > .iurub-native-menu { grid-area:1/2; }
+      .iurub-minimal-card > :is(.iurub-save,.iurub-remove) { grid-area:1/3; }
+      html.iurub-inline-comments body { position:static !important; overflow-y:auto !important; }
+      html.iurub-inline-comments ytm-engagement-panel:has(.engagement-panel-comments-section) { position:relative !important; display:block; inset:auto !important; width:100% !important; height:auto !important; transform:none !important; }
+      html.iurub-inline-comments .engagement-panel-comments-section { height:max(320px, 68dvh) !important; max-height:none !important; }
+      html.iurub-inline-comments .engagement-panel-comments-section > ytw-scrim { display:none !important; }
+      html.iurub-inline-comments .YtmCommentSimpleboxRendererHost { padding:4px 12px !important; margin:0 !important; }
+      html.iurub-inline-comments .YtmCommentSimpleboxRendererInput { min-height:32px !important; }
+      html.iurub-inline-comments [data-iurub-comments-preview] { display:none !important; }
       @media(prefers-color-scheme:dark) { .iurub-save, .iurub-remove { color:#ff9487; } .iurub-save::before, .iurub-remove::before { background:#ff81751c; } .iurub-save[data-saved="false"] { color:var(--yt-spec-text-primary,#f1f1f1); } :is(.iurub-save,.iurub-remove)[data-saved="true"] { color:#ff9487; } }
     `;
     (document.head || document.documentElement).appendChild(style);
@@ -415,26 +424,18 @@
     if (button.getAttribute('aria-label') !== label) button.setAttribute('aria-label', label);
     button.title = label;
   }
-  function placeAction(card, button, removing) {
-    // Current mobile layouts put the title/avatar and menu in these rows.
-    // Insert alongside the site's menu without moving or replacing its controls.
-    const menu = card.querySelector('.YtmCompactMediaItemMenu, .ytLockupMetadataViewModelMenuButton, .media-item-menu');
-    const details = card.querySelector('.media-item-info, yt-lockup-metadata-view-model');
-    if (removing && menu) {
-      menu.classList.add('iurub-stacked-menu');
-      if (button.parentElement !== menu) menu.append(button);
-      card.classList.remove('iurub-compact-card');
-    } else if (!removing && details && menu && menu.parentElement === details) {
-      details.classList.add('iurub-inline-details');
-      menu.classList.remove('iurub-stacked-menu');
-      if (button.parentElement !== details) details.insertBefore(button, menu);
-      card.classList.remove('iurub-compact-card');
-    } else {
-      // Unknown or minimal layouts keep the control inside the existing card,
-      // never add a separate block underneath its thumbnail and description.
-      card.classList.add('iurub-compact-card');
-      if (button.parentElement !== card) card.append(button);
-    }
+  function placeAction(card, button) {
+    // YouTube positions the overflow menu absolutely on several mobile renderers.
+    // Give its original wrapper and our button separate slots in the metadata row.
+    const menu = card.querySelector('.YtmCompactMediaItemMenu,.ytLockupMetadataViewModelMenuButton,.yt-lockup-metadata-view-model__menu-button,.media-item-menu')
+      || card.querySelector('ytm-menu-renderer,ytm-bottom-sheet-renderer') || cardMenu(card);
+    const row = menu?.parentElement || card.querySelector('.media-item-info,yt-lockup-metadata-view-model') || card;
+    if (row === card) row.classList.add('iurub-minimal-card');
+    else row.classList.add('iurub-inline-details');
+    if (menu) {
+      menu.classList.add('iurub-native-menu');
+      if (menu.nextElementSibling !== button) menu.after(button);
+    } else if (button.parentElement !== row) row.append(button);
   }
   function updateButton(button, id) {
     const saved = accountSaving ? accountMembership.get(id) === true : savedIDs.has(id);
@@ -445,10 +446,39 @@
   }
   const watchComments = 'ytm-comments-entry-point-header-renderer,ytm-comment-section-renderer,ytm-comment-thread-renderer,ytm-comments-header-renderer,ytd-comments,ytd-comment-thread-renderer,comments-entry-point-teaser-view-model,yt-comment-teaser-carousel-item-view-model,yt-comments-entry-point-header-view-model';
   const watchProtected = watchComments + ',ytm-slim-video-metadata-section-renderer,ytm-slim-video-action-bar-renderer,ytm-slim-owner-renderer,ytm-structured-description-content-renderer,ytm-expandable-video-description-body-renderer,ytm-playlist-panel-renderer,ytd-playlist-panel-renderer,ytm-engagement-panel-section-list-renderer,ytd-engagement-panel-section-list-renderer,#movie_player,#player,ytm-player,.html5-video-player,[role="dialog"],[role="menu"]';
+  let commentsVideo = null, commentsAttempts = 0, nextCommentsAttempt = 0;
+  function showWatchComments(watchPage) {
+    const id = watchPage && trackPlayback ? parseLink(location.href)?.id : null;
+    if (commentsVideo !== id) {
+      commentsVideo = id; commentsAttempts = 0; nextCommentsAttempt = 0;
+    }
+    const panel = id && document.querySelector('ytm-engagement-panel .engagement-panel-comments-section');
+    const open = Boolean(panel && visible(panel));
+    document.documentElement.classList.toggle('iurub-inline-comments', open);
+    if (!id || miniEnabled) return;
+    const teaser = document.querySelector('ytm-comments-entry-point-header-renderer,comments-entry-point-teaser-view-model,yt-comments-entry-point-header-view-model');
+    const carousel = teaser?.closest('yt-video-metadata-carousel-view-model');
+    const preview = carousel && carousel.querySelectorAll('yt-carousel-item-view-model').length <= 1 ? carousel : teaser;
+    if (open || document.querySelector('ytm-comment-section-renderer:not([hidden]) ytm-comment-thread-renderer,ytd-comments ytd-comment-thread-renderer')) {
+      commentsAttempts = 3; // Respect a subsequent manual dismissal.
+      if (preview && open) preview.setAttribute('data-iurub-comments-preview','');
+      return;
+    }
+    if (!preview || !visible(preview) || commentsAttempts >= 3 || Date.now() < nextCommentsAttempt) return;
+    const button = 'button:not([disabled]),[role="button"]:not([aria-disabled="true"])';
+    const target = teaser.closest(button) || teaser.querySelector(button)
+      || Array.from(preview.querySelectorAll(button)).find(n => /comment/i.test(labelOf(n))) || teaser;
+    if (!target || !visible(target)) return;
+    commentsAttempts++;
+    nextCommentsAttempt = Date.now() + 1500;
+    target.click();
+    if (commentsAttempts < 3) setTimeout(scheduleScan, 1550);
+  }
   function simplifyWatchPage() {
     const watchPage = location.pathname === '/watch' && Boolean(parseLink(location.href));
     document.documentElement.classList.toggle('iurub-watch-page', watchPage);
     document.querySelectorAll('[data-iurub-watch-recommendations]').forEach(node => node.removeAttribute('data-iurub-watch-recommendations'));
+    showWatchComments(watchPage);
     if (!watchPage) return;
     // The authenticated mobile layout keeps metadata and the comments teaser
     // inside .related-chips-slot-wrapper. Never hide that entire wrapper.
@@ -507,12 +537,12 @@
         }
         removeButton.dataset.videoId = link.id;
         updateButton(removeButton, link.id);
-        placeAction(card, removeButton, true);
+        placeAction(card, removeButton);
         return;
       }
       removeButton?.remove();
       let button = card.querySelector('.iurub-save');
-      if (!link) { button?.remove(); card.classList.remove('iurub-compact-card'); return; }
+      if (!link) { button?.remove(); card.classList.remove('iurub-minimal-card'); return; }
       if (!button) {
         button = document.createElement('button');
         button.className = 'iurub-save';
@@ -528,7 +558,7 @@
           post('save', { video: current });
         });
       }
-      placeAction(card, button, false);
+      placeAction(card, button);
       button.__iurubVideo = metadata(card, anchor, link);
       button.dataset.videoId = link.id;
       updateButton(button, link.id);
@@ -861,6 +891,10 @@
     stepSpeed,
     togglePiP,
     setMiniPlayer,
+    returnToWatchPage() {
+      setMiniPlayer(false);
+      if (trackPlayback && location.pathname === '/watch') requestAnimationFrame(() => window.scrollTo(0, 0));
+    },
     pauseWhenHidden,
     enterBackground,
     foreground() { backgroundHandoff = null; },
