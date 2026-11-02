@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		47C0CD0597714C2685DC0001 /* MovingBar.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 47C0CD0597714C2685DC0002 /* MovingBar.mp4 */; };
 		038DA3F1F6BF51259FF20EA2 /* PlaybackFixture.html in Resources */ = {isa = PBXBuildFile; fileRef = F0CCC8AE5A644F858F0C3D69 /* PlaybackFixture.html */; };
 		04680030EA8D19E2134D46D4 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ED279DEE67283CE0A5421BC /* AppSettings.swift */; };
 		1699FDA46FA9EA180B996B44 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D5BB590955FE5CDCFEE6439 /* LibraryView.swift */; };
@@ -53,6 +54,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		47C0CD0597714C2685DC0002 /* MovingBar.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = MovingBar.mp4; sourceTree = "<group>"; };
 		02F39DE9C5C761E25180DE86 /* IurubApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IurubApp.swift; sourceTree = "<group>"; };
 		04A0F76EA6162B23FC7F8EC1 /* VideoSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoSummary.swift; sourceTree = "<group>"; };
 		0D5BB590955FE5CDCFEE6439 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
@@ -176,6 +178,7 @@
 			isa = PBXGroup;
 			children = (
 				4D481683013738B7DA9B3DCB /* IurubUITests.swift */,
+				47C0CD0597714C2685DC0002 /* MovingBar.mp4 */,
 			);
 			path = iurubUITests;
 			sourceTree = "<group>";
@@ -238,6 +241,7 @@
 			buildConfigurationList = CD156009B322DFBE1D2DD440 /* Build configuration list for PBXNativeTarget "iurubUITests" */;
 			buildPhases = (
 				5F080A5BDBFF51B3105EE564 /* Sources */,
+				47C0CD0597714C2685DC0003 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -297,6 +301,7 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		47C0CD0597714C2685DC0003 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (47C0CD0597714C2685DC0001 /* MovingBar.mp4 in Resources */,); runOnlyForDeploymentPostprocessing = 0; };
 		C0679CCE3400F5177B3C262D /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -405,7 +410,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 2SPST82UYT;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -420,7 +425,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.5.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -467,7 +472,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 2SPST82UYT;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -488,7 +493,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.5.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

@@ -1,4 +1,5 @@
 import XCTest
+import AVKit
 
 final class IurubUITests: XCTestCase {
     private var app: XCUIApplication!
@@ -7,6 +8,63 @@ final class IurubUITests: XCTestCase {
         app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-state", "--fixture"]
         app.launch()
+    }
+
+    private func openPlayableClip() throws {
+        app.terminate()
+        let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "MovingBar", withExtension: "mp4"))
+        app.launchEnvironment["IURUB_TEST_CLIP"] = try Data(contentsOf: file).base64EncodedString()
+        app.launch()
+        let savedVideo = app.webViews.staticTexts["Video già salvato nell’account"]
+        XCTAssertTrue(savedVideo.waitForExistence(timeout: 10))
+        savedVideo.tap()
+        let play = app.webViews.buttons["Riproduci la clip"]
+        XCTAssertTrue(play.waitForExistence(timeout: 10))
+        play.tap()
+    }
+
+    func testSpeedButtonsControlActualVideoAndStopAtLimits() throws {
+        try openPlayableClip()
+        let plus = app.buttons["speedUp"], minus = app.buttons["speedDown"]
+        XCTAssertTrue(plus.waitForExistence(timeout: 5))
+        plus.tap()
+        XCTAssertTrue(app.webViews.staticTexts["Velocità effettiva 1.25"].waitForExistence(timeout: 5))
+        capture("player-controls")
+        for _ in 0..<3 { plus.tap() }
+        XCTAssertTrue(app.webViews.staticTexts["Velocità effettiva 2"].waitForExistence(timeout: 5))
+        XCTAssertFalse(plus.isEnabled)
+        for _ in 0..<6 { minus.tap() }
+        XCTAssertTrue(app.webViews.staticTexts["Velocità effettiva 0.5"].waitForExistence(timeout: 5))
+        XCTAssertFalse(minus.isEnabled)
+    }
+
+    func testRealPictureInPictureContinuesOnHomeScreen() throws {
+        try openPlayableClip()
+        let pip = app.buttons["pictureInPicture"]
+        XCTAssertTrue(pip.waitForExistence(timeout: 5))
+        pip.tap()
+        if !AVPictureInPictureController.isPictureInPictureSupported() {
+            XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 5))
+            throw XCTSkip("Questo simulatore non supporta la finestra di sistema. Verificato il messaggio di indisponibilità.")
+        }
+        let entered = NSPredicate(format: "label == %@", "Riporta il video nell’app")
+        expectation(for: entered, evaluatedWith: pip)
+        waitForExpectations(timeout: 8)
+        func seconds() throws -> Int {
+            let clock = app.webViews.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Secondi '")).firstMatch
+            return try XCTUnwrap(Int(clock.label.replacingOccurrences(of: "Secondi ", with: "")))
+        }
+        let start = try seconds()
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 6))
+        // Sample the actual media clock across a full interval outside the app.
+        Thread.sleep(forTimeInterval: 5)
+        app.activate()
+        XCTAssertGreaterThanOrEqual(try seconds() - start, 5, "Il video deve avanzare fuori dall’app")
+        XCTAssertTrue(pip.waitForExistence(timeout: 5))
+        if pip.label == "Riporta il video nell’app" { pip.tap() }
+        expectation(for: NSPredicate(format: "label == %@", "Picture in Picture"), evaluatedWith: pip)
+        waitForExpectations(timeout: 5)
     }
 
     func testModelChoicePersistsAndControlsAutomaticSummaryAndFollowUp() throws {

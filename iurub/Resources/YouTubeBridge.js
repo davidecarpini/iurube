@@ -429,6 +429,7 @@
       updateButton(button, link.id);
     });
     reportCurrent();
+    reportMediaControls();
     applyResume();
     reportPlayback();
   }
@@ -497,6 +498,66 @@
   let lastProgressTime = -Infinity;
   let lastProgress = '';
   const mainVideo = () => document.querySelector('#movie_player video') || document.querySelector('video.html5-main-video') || document.querySelector('video');
+  const speeds = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+  const detached = media => Boolean(media && (media.webkitPresentationMode === 'picture-in-picture' || document.pictureInPictureElement === media));
+  let lastControls = '', enteringPiP = null;
+  function reportMediaControls() {
+    const id = parseLink(location.href)?.id;
+    if (!trackPlayback || !id) return;
+    const media = mainVideo();
+    if (enteringPiP?.media === media && detached(media)) enteringPiP = null;
+    const rate = media?.readyState >= 1 && Number.isFinite(media.playbackRate) ? media.playbackRate : null;
+    const state = {id, session:playbackSession, rate, detached:detached(media)};
+    const key = JSON.stringify(state);
+    if (key !== lastControls) { lastControls = key; post('mediaControls', state); }
+  }
+  function stepSpeed(id, direction) {
+    const media = mainVideo();
+    if (!trackPlayback || parseLink(location.href)?.id !== id || !media || media.readyState < 1 || ![-1,1].includes(direction)) return false;
+    const next = direction > 0 ? speeds.find(r => r > media.playbackRate) : [...speeds].reverse().find(r => r < media.playbackRate);
+    if (next == null) return false;
+    try { media.playbackRate = next; reportMediaControls(); return media.playbackRate === next; } catch { return false; }
+  }
+  function togglePiP(id) {
+    const media = mainVideo();
+    if (!trackPlayback || parseLink(location.href)?.id !== id || !media || media.readyState < 2) return 'notReady';
+    const active = detached(media);
+    if (!active && (media.disablePictureInPicture || document.permissionsPolicy?.allowsFeature?.('picture-in-picture') === false)) return 'unavailable';
+    const webkitAPI = typeof media.webkitSetPresentationMode === 'function' &&
+      media.webkitSupportsPresentationMode?.(active ? 'inline' : 'picture-in-picture');
+    if (!webkitAPI && !(active ? typeof document.exitPictureInPicture === 'function' :
+      document.pictureInPictureEnabled && typeof media.requestPictureInPicture === 'function')) return 'unavailable';
+    if (!active && (media.paused || media.ended)) return 'playFirst';
+    const request = {media};
+    enteringPiP = active ? null : request;
+    const failed = () => {
+      if (parseLink(location.href)?.id !== id || mainVideo() !== media || detached(media) !== active) return;
+      if (enteringPiP === request) enteringPiP = null;
+      post('pipFailed', {id, session:playbackSession});
+    };
+    try {
+      if (webkitAPI) media.webkitSetPresentationMode(active ? 'inline' : 'picture-in-picture');
+      else (active ? document.exitPictureInPicture() : media.requestPictureInPicture()).catch(failed);
+      setTimeout(() => {
+        if (enteringPiP !== request) return;
+        if (!detached(media)) failed();
+        enteringPiP = null;
+      }, 2200);
+      reportMediaControls();
+      return 'requested';
+    } catch { enteringPiP = null; return 'unavailable'; }
+  }
+  for (const event of ['loadedmetadata','emptied','ratechange','webkitpresentationmodechanged','enterpictureinpicture','leavepictureinpicture']) {
+    document.addEventListener(event, reportMediaControls, true);
+  }
+  function pauseWhenHidden() {
+    reportPlayback(true);
+    const primary = mainVideo();
+    document.querySelectorAll('video,audio').forEach(media => {
+      if (!(trackPlayback && media === primary && (detached(media) || enteringPiP?.media === media))) media.pause();
+    });
+    return true;
+  }
   const unavailablePlayback = media => !media || document.querySelector('.ad-showing, .ad-interrupting, .html5-video-player.ytp-live') || !Number.isFinite(media.duration) || media.duration <= 0;
   function bindMedia(media, metadataReady = false) {
     const id = parseLink(location.href)?.id;
@@ -625,6 +686,9 @@
       checkRoute();
     },
     currentVideo,
+    stepSpeed,
+    togglePiP,
+    pauseWhenHidden,
     playbackSnapshot,
     restorePlayback,
     adoptPlayback,

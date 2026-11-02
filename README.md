@@ -1,6 +1,6 @@
 # iurub
 
-Versione **1.4.1**. Client personale per iPhone, SwiftUI + WKWebView, iOS 17+. Nessun backend da configurare. I riassunti usano Gemini tramite la tua chiave OpenRouter, custodita nel Portachiavi.
+Versione **1.5.0**. Client personale per iPhone, SwiftUI + WKWebView, iOS 17+. Nessun backend da configurare. I riassunti usano Gemini tramite la tua chiave OpenRouter, custodita nel Portachiavi.
 
 ## Navigazione
 
@@ -35,6 +35,12 @@ La posizione è conservata per ciascun video sul dispositivo. Puoi cambiare sezi
 All’avvio, un video incompleto viene riaperto in **In corso**; se non ce n’è uno, l’app mostra **Salvati**. Un video terminato non viene riaperto automaticamente. Aprendolo di nuovo dalla lista, ricomincia dall’inizio. Se il video in corso è uno Short e disattivi gli Shorts, il punto salvato resta conservato: la tab indica come riabilitarli per continuare.
 
 Il progresso viene registrato circa ogni cinque secondi durante la riproduzione, oltre che in occasione di pausa, spostamento del cursore, cambio di sezione e passaggio in background. Dopo una chiusura forzata si riparte dall’ultimo aggiornamento effettivamente salvato: gli ultimissimi secondi potrebbero non essere stati registrati. La ripresa dipende dal caricamento e dalla disponibilità del player YouTube; questi segnalibri sono locali e non sincronizzano la posizione con altri dispositivi.
+
+## Finestra video e velocità
+
+Durante la riproduzione, tocca l’icona **Picture in Picture** accanto al segnalibro. Quando compare la finestra, puoi tornare alla schermata Home o aprire un’altra app. Per rientrare usa il comando della finestra di iOS. La chiusura forzata di iurub termina la riproduzione. Se il video o il dispositivo non consente Picture in Picture, il player lo segnala.
+
+Usa **−** e **+** accanto alla velocità per passare da **0,5× a 2×** a passi di 0,25×. Il numero al centro mostra la velocità effettiva, anche se la cambi dal menu YouTube.
 
 ## Riassunto e chat sul video
 

@@ -79,7 +79,7 @@ struct MainView: View {
                 savedNeedsRefresh = false
             }
             if old == 0 { player.captureProgress() }
-            for (index, session) in sessions.enumerated() where index != tab { session.pause() }
+            for (index, session) in sessions.enumerated() where index != tab { session.pauseWhenHidden() }
             if tab == 0 { ensurePlayer() }
             else if tab == 1 && savedNeedsRefresh {
                 savedNeedsRefresh = false
@@ -90,7 +90,7 @@ struct MainView: View {
             else { sessions[tab].startIfNeeded() }
         }
         .onChange(of: showingSettings) { _, showing in if showing { pauseAll() } }
-        .onChange(of: scenePhase) { _, phase in if phase != .active { pauseAll() } }
+        .onChange(of: scenePhase) { _, phase in if phase == .background { pauseAll() } else if phase == .inactive { player.captureProgress() } }
         .onOpenURL { url in
             guard url.scheme == "iurub", url.host == "open",
                   let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "url" })?.value,
@@ -282,8 +282,7 @@ struct MainView: View {
     }
 
     private func pauseAll() {
-        player.captureProgress()
-        sessions.forEach { $0.pause() }
+        sessions.forEach { $0.pauseWhenHidden() }
     }
 }
 

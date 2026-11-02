@@ -7,3 +7,4 @@ xcuserdata/
 *.xcresult
 node_modules/
 work/
+.swiftpm/

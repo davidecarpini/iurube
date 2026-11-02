@@ -2,6 +2,9 @@ import Combine
 import Foundation
 import SwiftUI
 import WebKit
+#if os(iOS)
+import AVFAudio
+#endif
 
 @MainActor
 final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
@@ -25,6 +28,8 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     let saveDestination: SaveDestination
     let startPage: StartPage
     @Published private(set) var isLoading = false
+    @Published private(set) var mediaRate: Double?
+    @Published private(set) var isDetached = false
     @Published private(set) var canGoBack = false
     @Published private(set) var currentVideo: SavedVideo?
     @Published private(set) var loadError: String?
@@ -235,6 +240,8 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         playbackSession = UUID().uuidString
         navigationGeneration = UUID()
         lastPlayback = nil
+        mediaRate = nil
+        isDetached = false
         currentVideo = video
         installScripts()
         #if DEBUG
@@ -356,6 +363,42 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         webView.evaluateJavaScript("window.iurub?.pause();", completionHandler: nil)
     }
 
+    /// A tab switch or a trip to the Home Screen must not pause the system PiP window.
+    /// Check the live element in WebKit, since the app can become inactive during its transition.
+    func pauseWhenHidden() {
+        guard role == .player, currentVideo != nil else { pause(); return }
+        let generation = navigationGeneration
+        webView.evaluateJavaScript("window.iurub?.pauseWhenHidden();") { [weak self] handled, _ in
+            guard let self, self.navigationGeneration == generation, handled as? Bool != true else { return }
+            self.pause()
+        }
+    }
+
+    func stepSpeed(_ direction: Int) {
+        guard [-1, 1].contains(direction), let id = currentVideo?.id, VideoLink.validID(id) else { return }
+        webView.evaluateJavaScript("window.iurub?.stepSpeed('\(id)', \(direction));") { [weak self] value, _ in
+            guard let self, self.currentVideo?.id == id, value as? Bool != true else { return }
+            self.notice = "Il player non può cambiare velocità in questo momento."
+        }
+    }
+
+    func togglePictureInPicture() {
+        guard let id = currentVideo?.id, VideoLink.validID(id) else { return }
+        #if os(iOS)
+        // WebKit starts the audio session with the media; do not activate it just by opening the app.
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        #endif
+        webView.evaluateJavaScript("window.iurub?.togglePiP('\(id)');") { [weak self] result, _ in
+            guard let self, self.currentVideo?.id == id else { return }
+            switch result as? String {
+            case "requested": break
+            case "playFirst": self.notice = "Avvia il video, poi tocca di nuovo Picture in Picture."
+            case "notReady", nil: self.notice = "Il video si sta caricando. Avvialo e riprova."
+            default: self.notice = "Picture in Picture non è disponibile per questo video o dispositivo."
+            }
+        }
+    }
+
     func saveCurrent() {
         if saveDestination == .youtube {
             webView.evaluateJavaScript("window.iurub?.toggleCurrentToYouTube();", completionHandler: nil)
@@ -411,6 +454,16 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
                   shortsEnabled || !video.isShort else { return }
             let seconds = body["startSeconds"] as? Double
             onOpenVideo?(video, seconds.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil })
+        case "mediaControls", "pipFailed":
+            guard role == .player, let id = body["id"] as? String, id == currentVideo?.id,
+                  body["session"] as? String == playbackSession,
+                  VideoLink.parse(webView.url?.absoluteString ?? "")?.id == id else { return }
+            if type == "pipFailed" {
+                notice = "Il player non ha aperto la finestra Picture in Picture. Riprova durante la riproduzione."
+            } else {
+                mediaRate = (body["rate"] as? Double).flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+                isDetached = body["detached"] as? Bool ?? false
+            }
         case "playback": acceptPlayback(body)
         case "save":
             guard saveDestination == .device else { return }
@@ -591,6 +644,23 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         let ids = UserDefaults(suiteName: "it.davidecarpini.iurub.uitests")!.stringArray(forKey: "fixtureAccountIDs") ?? ["M7lc1UVf-VE"]
         let accountData = try! JSONSerialization.data(withJSONObject: ids)
         html = html.replacingOccurrences(of: "/*IURUB_PLAYBACK_FIXTURE*/", with: "window.fixtureVideoTitle = \(title); window.fixtureAccountIDs = \(String(decoding: accountData, as: UTF8.self));")
+        if let clip = ProcessInfo.processInfo.environment["IURUB_TEST_CLIP"],
+           let data = Data(base64Encoded: clip), data.count < 250_000 {
+            // A real, local H.264 clip carried by the UI test runner, never by the release app.
+            html = """
+            <!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
+            <title>Prova controlli video - YouTube</title>
+            <div id="movie_player"><video style="width:100%" playsinline preload="auto"
+            src="data:video/mp4;base64,\(data.base64EncodedString())"></video></div>
+            <button onclick="document.querySelector('video').play()">Riproduci la clip</button>
+            <p id="clock">Secondi 0</p><p id="rate">Velocità effettiva 1</p>
+            <script>
+            const v=document.querySelector('video');
+            v.ontimeupdate=()=>document.querySelector('#clock').textContent='Secondi '+Math.floor(v.currentTime);
+            v.onratechange=()=>document.querySelector('#rate').textContent='Velocità effettiva '+v.playbackRate;
+            </script>
+            """
+        }
         hasLoaded = true
         loadError = nil
         lastURL = video.url

@@ -451,6 +451,54 @@ async function playbackSetup(config = {}, stateOverrides = {}) {
 }
 const playbackMessages = messages => messages.filter(message => message.type === 'playback');
 
+test('hidden player keeps only the detached media playing and resumes normal pause on exit', async () => {
+  const {dom,d,w,messages} = await playbackSetup();
+  try {
+    const video = d.querySelector('video'), id = 'jfKfPfyJRdk';
+    const extra = d.createElement('audio'); let otherPauses = 0;
+    extra.pause = () => otherPauses++; d.body.append(extra);
+    Object.defineProperty(video, 'paused', {value:false});
+    let request;
+    video.webkitPresentationMode = 'inline';
+    video.webkitSupportsPresentationMode = () => true;
+    video.webkitSetPresentationMode = mode => { request = mode; };
+    assert.equal(w.iurub.togglePiP(id), 'requested');
+    assert.equal(request, 'picture-in-picture');
+    w.iurub.pauseWhenHidden();
+    assert.equal(w.playbackState.pauses, 0, 'Home pressed during PiP transition');
+    video.webkitPresentationMode = request;
+    video.dispatchEvent(new w.Event('webkitpresentationmodechanged'));
+    assert.equal(messages.filter(m => m.type === 'mediaControls').at(-1).detached, true);
+    w.iurub.pauseWhenHidden();
+    assert.equal(w.playbackState.pauses, 0);
+    assert.equal(otherPauses, 2);
+    assert.equal(w.iurub.togglePiP(id), 'requested');
+    video.webkitPresentationMode = request;
+    video.dispatchEvent(new w.Event('webkitpresentationmodechanged'));
+    w.iurub.pauseWhenHidden();
+    assert.equal(w.playbackState.pauses, 1);
+    assert.equal(otherPauses, 3);
+  } finally { dom.window.close(); }
+});
+
+test('media controls respect site restrictions, the current video, and changes from the site player', async () => {
+  const {dom,d,w,messages} = await playbackSetup();
+  try {
+    const video = d.querySelector('video'), id = 'jfKfPfyJRdk';
+    video.disablePictureInPicture = true;
+    assert.equal(w.iurub.togglePiP(id), 'unavailable');
+    assert.equal(w.iurub.stepSpeed('M7lc1UVf-VE', 1), false);
+    video.playbackRate = 1.4;
+    video.dispatchEvent(new w.Event('ratechange'));
+    assert.equal(messages.filter(m => m.type === 'mediaControls').at(-1).rate, 1.4);
+    assert.equal(w.iurub.stepSpeed(id, -1), true);
+    assert.equal(video.playbackRate, 1.25);
+    w.playbackState.readyState = 0;
+    assert.equal(w.iurub.togglePiP(id), 'notReady');
+    assert.equal(w.iurub.stepSpeed(id, 1), false);
+  } finally { dom.window.close(); }
+});
+
 test('browse capture routes a video with metadata and timestamp without entering the web player', async () => {
   const html = '<ytm-video-with-context-renderer><a href="/watch?v=jfKfPfyJRdk&t=1m42s"><h3>Un video utile</h3></a><div class="byline">Il canale</div></ytm-video-with-context-renderer>';
   const { dom, d, w, messages } = await setup(html, 'https://m.youtube.com/', {routeVideoOpens:true});

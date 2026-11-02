@@ -35,7 +35,7 @@ struct BrowserPane: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if let video = session.currentVideo {
                     let saved = session.saveDestination == .youtube ? session.youtubeSavedIDs.contains(video.id) : library.contains(video.id)
-                    HStack(spacing: 10) {
+                    HStack(spacing: 2) {
                         Button(action: session.saveCurrent) {
                             Image(systemName: saved ? "bookmark.fill" : "bookmark")
                                 .font(.headline).frame(width: 44, height: 44)
@@ -44,6 +44,16 @@ struct BrowserPane: View {
                         .accessibilityLabel(session.saveDestination == .youtube ? (saved ? "Rimuovi da Guarda più tardi" : "Guarda più tardi") : (saved ? "Salvato sul dispositivo" : "Salva sul dispositivo"))
                         .accessibilityValue(saved ? "salvato" : (session.saveDestination == .youtube && !session.youtubeRemovedIDs.contains(video.id) ? "da verificare" : "non salvato"))
                         .accessibilityIdentifier("saveCurrentVideo")
+                        if session.role == .player {
+                            Button(action: session.togglePictureInPicture) {
+                                Image(systemName: session.isDetached ? "pip.exit" : "pip.enter")
+                                    .frame(width: 44, height: 44)
+                            }
+                            .accessibilityLabel(session.isDetached ? "Riporta il video nell’app" : "Picture in Picture")
+                            .accessibilityHint("Guarda il video mentre usi altre app")
+                            .accessibilityIdentifier("pictureInPicture")
+                            speedControls
+                        }
                         Button {
                             session.pause()
                             summaryVideo = video
@@ -52,16 +62,20 @@ struct BrowserPane: View {
                                 if summaries.busy.contains(video.id) || summaries.queued.contains(video.id) {
                                     ProgressView().controlSize(.small)
                                 } else { Image(systemName: "sparkles") }
-                                Text("Riassunto")
+                                ViewThatFits(in: .horizontal) {
+                                    Text("Riassunto").fixedSize()
+                                    Color.clear.frame(width: 0, height: 1)
+                                }
                             }
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity).frame(minHeight: 44)
                             .background(Theme.accent.opacity(0.1), in: Capsule())
                         }
+                        .accessibilityLabel("Riassunto")
                         .accessibilityIdentifier("summaryButton")
                         .accessibilityValue(summaries.busy.contains(video.id) ? "In preparazione" : (summaries.queued.contains(video.id) ? "In attesa" : ((summaries.conversations[video.id] ?? []).isEmpty ? "Da preparare" : "Pronto")))
                     }
-                    .padding(.horizontal, 16).padding(.vertical, 8)
+                    .padding(.horizontal, 8).padding(.vertical, 6)
                     .background(.regularMaterial)
                 }
             }
@@ -85,7 +99,7 @@ struct BrowserPane: View {
                     }
                 }
             }
-            .onDisappear { session.pause(); session.onSave = nil }
+            .onDisappear { session.pauseWhenHidden(); session.onSave = nil }
             .onReceive(session.$saveFeedback) { if let message = $0 { feedback = message } }
             .alert("iurub", isPresented: Binding(get: { session.notice != nil }, set: { if !$0 { session.notice = nil } })) {
                 Button("OK") { session.notice = nil }
@@ -108,6 +122,27 @@ struct BrowserPane: View {
             #if os(iOS)
             .sheet(item: $safariURL) { item in SafariView(url: item.url).ignoresSafeArea() }
             #endif
+    }
+    private var speedControls: some View {
+        HStack(spacing: 0) {
+            Button { session.stepSpeed(-1) } label: {
+                Image(systemName: "minus").frame(width: 44, height: 44)
+            }
+            .disabled((session.mediaRate ?? 0.5) <= 0.5)
+            .accessibilityLabel("Riduci velocità").accessibilityIdentifier("speedDown")
+            Text(session.mediaRate.map { $0.formatted(.number.precision(.fractionLength(0...2))) + "×" } ?? "–")
+                .font(.subheadline.weight(.semibold).monospacedDigit())
+                .foregroundStyle(.primary).lineLimit(1).minimumScaleFactor(0.7)
+                .accessibilityLabel("Velocità di riproduzione")
+                .accessibilityValue(session.mediaRate.map { String($0) } ?? "")
+                .accessibilityIdentifier("playbackSpeed")
+            Button { session.stepSpeed(1) } label: {
+                Image(systemName: "plus").frame(width: 44, height: 44)
+            }
+            .disabled((session.mediaRate ?? 2) >= 2)
+            .accessibilityLabel("Aumenta velocità").accessibilityIdentifier("speedUp")
+        }
+        .background(.quaternary, in: Capsule())
     }
 }
 
