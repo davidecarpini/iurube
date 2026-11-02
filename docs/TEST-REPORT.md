@@ -8,6 +8,8 @@ Le notifiche di conferma della playlist vengono sostituite da un solo messaggio 
 
 **Verifiche.** Superati 54 test JavaScript e 48 test Swift. Sul simulatore sono inoltre passati sei test di interfaccia distinti, inclusa la prova della velocità sul video YouTube reale. Il test della riproduzione continua di YouTube è stato registrato come saltato dopo aver misurato la sospensione sul simulatore senza PiP. I cambi alla playlist sono stati provati con un account simulato. La larghezza del valore «1,25×», i limiti della velocità e la ripresa della clip sono stati riverificati sulla versione definitiva. Esiti in `build/InlinePlayer-Final-160.xcresult` e `build/InlinePlayer-Release-160.xcresult`.
 
+**TestFlight.** Apple ha ricevuto iurub 1.6.0 (9) il 2 novembre 2026 alle 16:21, ora italiana. App Store Connect conferma la disponibilità della build 9 per il gruppo interno **Internals**, con un invito. [Dettagli della build](https://appstoreconnect.apple.com/apps/6829671295/testflight/ios/76572cfa-7e32-46fc-afb0-c3707a54fe86). Archivio firmato `build/Distribution/iurub-1.6.0-9-final.xcarchive`, sorgenti `0b4eb28`.
+
 ---
 
 # iurub 1.5.0 · build 8
