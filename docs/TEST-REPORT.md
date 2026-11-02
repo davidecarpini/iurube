@@ -1,3 +1,13 @@
+# iurub 1.4.1 · build 7
+
+2 novembre 2026. In **Impostazioni → Riassunti con Gemini** il toggle **Riassunto automatico nei Salvati** è spento per impostazione iniziale, anche aggiornando dalla versione precedente. In modalità manuale, un video salvato o aperto attende il tocco su **Riassunto**. Attivando il toggle, i nuovi salvataggi confermati da YouTube avviano il riassunto. La preferenza viene conservata al riavvio. Disattivarla rimuove le richieste automatiche ancora in coda e lascia terminare quelle già avviate.
+
+**Verifica.** Superati 48 test Swift e 3 XCUITest su iPhone Air. La prova manuale salva il video, lo riapre da Salvati, verifica lo stato “Da preparare” e ottiene il testo dopo il tocco su Riassunto. La prova automatica verifica che la risposta sia pronta prima di aprire la chat. Sono stati verificati anche la persistenza della preferenza, il cambio di modello e lo svuotamento della coda. Le prove hanno usato risposte simulate. Risultati in `build/AutoSummary-141.xcresult`.
+
+**Distribuzione.** Archivio Release firmato e verificato in `build/Distribution/iurub-1.4.1-7.xcarchive`. Al primo invio Xcode ha richiesto di autenticare nuovamente l’Apple Account del team. La versione 1.4.0 (6) rimane l’ultima disponibilità TestFlight verificata, in attesa del nuovo caricamento.
+
+---
+
 # iurub 1.4.0 · build 6
 
 2 novembre 2026. In Impostazioni → Modello e costi si sceglie tra Gemini 2.5 Flash-Lite, 3.1 Flash-Lite, 2.5 Flash e 3.8 Flash. La preferenza viene conservata. Le richieste in partenza usano il modello scelto e le risposte riportano il modello e, quando fornito da OpenRouter, il costo. Le vecchie conversazioni rimangono leggibili.

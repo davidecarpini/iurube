@@ -47,7 +47,7 @@ struct SummaryModelSettingsView: View {
                     .accessibilityIdentifier("estimateQuestions")
                 comparison
             } header: { Text("Quanto spenderei? · USD") } footer: {
-                Text("Ogni video comprende un riassunto. Ogni domanda invia di nuovo il video e la conversazione. Salvare un video in Guarda più tardi avvia il riassunto.")
+                Text("La stima comprende un riassunto per video. Ogni domanda invia di nuovo il video e la conversazione.")
             }
             Section("Come leggere la stima") {
                 Text("L’intervallo confronta due risoluzioni. Per secondo ipotizziamo 66–258 token di immagini e 32 di audio. Il costo effettivo dipende dai token elaborati, dal ragionamento e dagli eventuali sconti.")

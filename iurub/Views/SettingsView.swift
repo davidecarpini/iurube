@@ -23,6 +23,10 @@ struct SettingsView: View {
                     Text("L’impostazione si applica subito a tutte le sezioni, alle ricerche e ai canali. I video brevi pubblicati come video normali rimangono visibili.")
                 }
                 Section {
+                    Toggle(isOn: $settings.automaticSummariesEnabled) {
+                        Label("Riassunto automatico nei Salvati", systemImage: "sparkles")
+                    }
+                    .accessibilityIdentifier("automaticSummariesToggle")
                     NavigationLink {
                         SummaryModelSettingsView()
                     } label: {
@@ -40,7 +44,9 @@ struct SettingsView: View {
                         } icon: { Image(systemName: "sparkles").foregroundStyle(Theme.accent) }
                     }.accessibilityIdentifier("summaryCredentialsButton")
                 } header: { Text("Riassunti con Gemini") } footer: {
-                    Text("Quando salvi un video in Guarda più tardi, inizia la preparazione del riassunto. Tocca Riassunto per leggerlo e fare domande. Le richieste usano il credito OpenRouter.")
+                    Text(settings.automaticSummariesEnabled
+                         ? "Quando aggiungi un video ai Salvati, iurub prepara il riassunto usando il tuo credito OpenRouter."
+                         : "Il riassunto viene generato solo quando tocchi Riassunto nel video.")
                 }
                 Section {
                     HStack { BrandMark(); Spacer(); Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.1.0").foregroundStyle(.secondary) }

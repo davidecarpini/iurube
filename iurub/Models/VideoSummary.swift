@@ -245,6 +245,14 @@ final class SummaryStore: ObservableObject {
         queued.remove(videoID)
     }
 
+    func discardQueuedPrefetches() {
+        guard !automaticQueue.isEmpty else { return }
+        // These videos never reached the provider. A future save can enqueue them again.
+        automaticAttempts.subtract(queued)
+        automaticQueue.removeAll()
+        queued.removeAll()
+    }
+
     func cancel(videoID: String) {
         automaticAttempts.insert(videoID)
         if queued.contains(videoID) {

@@ -108,6 +108,20 @@ struct LibraryTests {
         try JSONEncoder().encode([video("bad")]).write(to: url)
         #expect(LibraryStore(fileURL: url).errorMessage != nil)
     }
+    @Test func testAutomaticSummariesAreOptInEvenWithExistingPreferences() throws {
+        let suite = "iurub.tests." + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(SummaryModel.lite31.rawValue, forKey: "summaryModel")
+        let settings = AppSettings(defaults: defaults)
+        #expect(!settings.automaticSummariesEnabled)
+        settings.automaticSummariesEnabled = true
+        #expect(AppSettings(defaults: defaults).automaticSummariesEnabled)
+        settings.automaticSummariesEnabled = false
+        #expect(!AppSettings(defaults: defaults).automaticSummariesEnabled)
+        #expect(AppSettings(defaults: defaults).summaryModel == .lite31)
+    }
+
     @Test func testShortsPreferenceDefaultsOffAndPersists() async {
         let suite = "iurub.tests.\(UUID())"
         let defaults = UserDefaults(suiteName: suite)!

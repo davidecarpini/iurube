@@ -197,6 +197,33 @@ struct SummaryPrefetchTests {
         #expect(store.conversations[a.id]?.map(\.text) == ["Ripreso manualmente"])
     }
 
+    @Test func testDisablingAutomaticSummariesDropsQueueAndPreservesManualRequests() async throws {
+        let service = PrefetchTestService(), url = temporaryURL()
+        defer { Task { await service.cancelAll() }; try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let store = SummaryStore(fileURL: url, service: service, keyProvider: { "test-key" })
+        let active = video(), manual = video("M7lc1UVf-VE"), later = video("aqz-KE-bpKQ")
+        [active, manual, later].forEach { store.prefetch(video: $0) }
+        try await waitFor { await service.calls.count == 1 }
+        store.discardQueuedPrefetches()
+        #expect(store.queued.isEmpty)
+        await service.succeed(0)
+        try await waitFor { store.busy.isEmpty }
+        #expect(await service.calls.map(\.videoID) == [active.id])
+        #expect(store.conversations[active.id]?.count == 1)
+        #expect(store.pending[manual.id] == nil && store.errors[manual.id] == nil)
+
+        store.request(video: manual)
+        try await waitFor { await service.calls.count == 2 }
+        await service.succeed(1)
+        try await waitFor { store.busy.isEmpty }
+        // A new save after opting in again is eligible; old queued work was discarded.
+        store.prefetch(video: later)
+        try await waitFor { await service.calls.count == 3 }
+        await service.succeed(2)
+        try await waitFor { store.busy.isEmpty }
+        #expect(await service.calls.map(\.videoID) == [active.id, manual.id, later.id])
+    }
+
     @Test func testCancellingQueuedVideoRemovesOnlyThatAutomaticRequest() async throws {
         let service = PrefetchTestService(), url = temporaryURL()
         defer { Task { await service.cancelAll() }; try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }

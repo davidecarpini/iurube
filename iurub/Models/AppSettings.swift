@@ -9,12 +9,16 @@ final class AppSettings: ObservableObject {
     @Published var summaryModel: SummaryModel {
         didSet { defaults.set(summaryModel.rawValue, forKey: "summaryModel") }
     }
+    @Published var automaticSummariesEnabled: Bool {
+        didSet { defaults.set(automaticSummariesEnabled, forKey: "automaticSummariesEnabled") }
+    }
 
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         shortsEnabled = defaults.bool(forKey: "shortsEnabled")
+        automaticSummariesEnabled = defaults.bool(forKey: "automaticSummariesEnabled")
         summaryModel = defaults.string(forKey: "summaryModel").flatMap(SummaryModel.init(rawValue:)) ?? .flash25
     }
 }

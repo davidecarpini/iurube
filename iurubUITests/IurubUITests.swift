@@ -11,6 +11,7 @@ final class IurubUITests: XCTestCase {
 
     func testModelChoicePersistsAndControlsAutomaticSummaryAndFollowUp() throws {
         app.buttons["settingsButton"].tap()
+        enableAutomaticSummaries()
         app.buttons["summaryModelSettings"].tap()
         let lite = app.buttons["choose-google/gemini-2.5-flash-lite"]
         XCTAssertTrue(lite.waitForExistence(timeout: 5))
@@ -21,6 +22,7 @@ final class IurubUITests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--fixture"]
         app.launch()
         app.buttons["settingsButton"].tap()
+        XCTAssertEqual(app.switches["automaticSummariesToggle"].value as? String, "1")
         app.buttons["summaryModelSettings"].tap()
         XCTAssertTrue(lite.waitForExistence(timeout: 5))
         XCTAssertTrue(lite.isSelected)
@@ -136,7 +138,41 @@ final class IurubUITests: XCTestCase {
         capture("video-comments-without-recommendations")
     }
 
+    private func enableAutomaticSummaries() {
+        let toggle = app.switches["automaticSummariesToggle"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        XCTAssertEqual(toggle.value as? String, "0")
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        XCTAssertEqual(toggle.value as? String, "1")
+    }
+
+    func testSavedVideoWaitsForExplicitSummaryByDefault() throws {
+        app.buttons["settingsButton"].tap()
+        let toggle = app.switches["automaticSummariesToggle"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        XCTAssertEqual(toggle.value as? String, "0")
+        capture("settings-automatic-summaries-off")
+        app.buttons["closeSettings"].tap()
+        app.tabBars.buttons["Esplora"].tap()
+        let bookmark = webBookmark("+ Guarda più tardi")
+        XCTAssertTrue(bookmark.waitForExistence(timeout: 10))
+        bookmark.tap()
+        XCTAssertTrue(webBookmark("Rimuovi da Guarda più tardi").waitForExistence(timeout: 10))
+        app.tabBars.buttons["Salvati"].tap()
+        let savedVideo = app.webViews.staticTexts["Musica per concentrarsi"]
+        XCTAssertTrue(savedVideo.waitForExistence(timeout: 10))
+        savedVideo.tap()
+        let summary = app.buttons["summaryButton"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        XCTAssertEqual(summary.value as? String, "Da preparare", "Neither saving nor opening the video starts an automatic request")
+        summary.tap()
+        XCTAssertTrue(app.staticTexts["summaryReply"].waitForExistence(timeout: 10))
+    }
+
     func testConfirmedSavePrefetchesSummaryBeforeOpeningChat() throws {
+        app.buttons["settingsButton"].tap()
+        enableAutomaticSummaries()
+        app.buttons["closeSettings"].tap()
         let id = "jfKfPfyJRdk"
         func prefetchStatus() -> [String: Any]? {
             let status = app.staticTexts["summaryPrefetchStatus"]

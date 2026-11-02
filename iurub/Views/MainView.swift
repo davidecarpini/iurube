@@ -62,6 +62,9 @@ struct MainView: View {
         .onReceive(settings.$shortsEnabled) { enabled in
             configureSessions(shortsEnabled: enabled)
         }
+        .onReceive(settings.$automaticSummariesEnabled) { enabled in
+            if !enabled { summaries.discardQueuedPrefetches() }
+        }
         .onChange(of: youtubeMembership) { _, _ in
             configureSessions(shortsEnabled: settings.shortsEnabled)
         }
@@ -171,7 +174,10 @@ struct MainView: View {
                 youtubeMembership[video.id] = saved
                 if session !== watchLater { savedNeedsRefresh = true }
             }
-            session.onYouTubeSaved = { video in summaries.prefetch(video: video) }
+            session.onYouTubeSaved = { video in
+                guard settings.automaticSummariesEnabled else { return }
+                summaries.prefetch(video: video)
+            }
             session.onAccountContextChanged = {
                 accountContextNeedsRefresh = true
                 resetMembershipHints()
