@@ -1,3 +1,15 @@
+# iurub 1.6.1 · build 10
+
+Il sito presenta la propria conferma di salvataggio o rimozione e il suo comando Annulla. Il segnalibro riconosce anche il messaggio con miniatura «Salvato in Guarda più tardi» in un normale elemento della pagina, con testo suddiviso in più parti o apparso in ritardo. Un timeout dell’interfaccia avvia un controllo della playlist. Il solo invio di un comando non avvia un riassunto a pagamento.
+
+Il player conserva la stessa webview cambiando tab. Se la finestra di sistema è disponibile, iurub richiede il PiP prima del cambio. Altrimenti continua a mostrare il video in una miniatura in alto a destra. Toccare la miniatura riapre In corso, la × ferma il video. Nel passaggio alla Home, iurub mantiene la finestra di sistema e tenta una sola ripresa se WebKit ha messo in pausa il video durante la transizione.
+
+**Verifiche del 2 novembre 2026.** Sul simulatore iPhone Air, “Big Buck Bunny” su YouTube è rimasto visibile e in riproduzione durante l’uso di Esplora, passando da 40,47 a 50,49 secondi. Una clip locale è passata da 1 a 14 secondi tra cambio di tab e ritorno al player. I test di salvataggio utilizzano una playlist di prova. Sono stati verificati la conferma originale ritardata, l’icona piena e vuota, Annulla e la lista aggiornata. Sono passati 48 test Swift e 58 test JavaScript. Esiti in `build/FloatingPlayer-161-release.xcresult` e `work/floating-161/bridge-release.log`.
+
+**Limite della prova Home.** Il simulatore non supporta la finestra PiP di sistema e WebKit vi ha sospeso il video pubblico quando un’altra app era in primo piano. Il test di continuità fuori dall’app è registrato come saltato. Le prove del comportamento durante l’ingresso in PiP coprono anche la sequenza pausa/finestra con eventi simulati. La continuità della nuova build sulla Home dell’iPhone resta da verificare in TestFlight.
+
+---
+
 # iurub 1.6.0 · build 9
 
 La barra del player riprende la proposta [In linea in Figma](https://www.figma.com/design/Z5jYRiRSVP4Gt8CERP4nFi/Untitled?node-id=7-422). Salva, Finestra, i pulsanti − e + con il valore della velocità e Riassunto sono accessibili con un tocco. Il segnalibro diventa pieno dopo la conferma del salvataggio e torna vuoto dopo la rimozione. In **Salvati** iurub ricarica la playlist a ogni ingresso. Se una modifica si conclude dopo il cambio di tab, iurub aggiorna la lista già aperta.

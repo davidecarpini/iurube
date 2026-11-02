@@ -22,7 +22,6 @@
   let undoCandidate = null;
   let pendingNotice = null;
   let menuSource = null;
-  const mutedNotices = new Map();
   mergeMembership(initial);
   const CARD = [
     'ytm-video-with-context-renderer', 'ytm-video-renderer', 'ytm-compact-video-renderer',
@@ -75,7 +74,11 @@
     style.textContent = `
       ytm-pivot-bar-renderer, .pivot-bar-renderer { display:none !important; }
       ytm-app { padding-bottom:0 !important; }
-      [data-iurub-playlist-notice] { display:none !important; }
+      html.iurub-mini, html.iurub-mini body { background:#000 !important; overflow:hidden !important; }
+      html.iurub-mini [data-iurub-player-path] { position:static !important; transform:none !important; contain:none !important; clip-path:none !important; overflow:visible !important; }
+      html.iurub-mini [data-iurub-player-path] > :not([data-iurub-player-path]):not([data-iurub-mini-video]) { visibility:hidden !important; }
+      html.iurub-mini video[data-iurub-mini-video] { position:fixed !important; inset:0 !important; z-index:2147483647 !important; width:100% !important; height:100% !important; max-width:none !important; max-height:none !important; margin:0 !important; transform:none !important; object-fit:contain !important; visibility:visible !important; background:black; }
+
       html.iurub-watch-page [data-iurub-watch-recommendations] { display:none !important; }
       html.iurub-no-shorts ${SHORT_SHELF.split(',').join(',html.iurub-no-shorts ')} { display:none !important; }
       html.iurub-no-shorts a[href^="/shorts/"], html.iurub-no-shorts a[href*="youtube.com/shorts/"] { display:none !important; }
@@ -145,7 +148,7 @@
   }
   function mergeMembership(config) {
     if (config.resetMembership === true) {
-      accountMembership.clear(); reportedMembership.clear(); undoCandidate = null;
+      accountMembership.clear(); reportedMembership.clear(); pendingNotice = null; menuSource = null; undoCandidate = null;
       // Existing cards may be stale after an account change; configure is not evidence.
     }
     for (const id of Array.isArray(config.savedIDs) ? config.savedIDs : []) if (VIDEO_ID.test(id)) { accountMembership.set(id, true); reportedMembership.set(id, true); }
@@ -167,10 +170,15 @@
   }
   const toastHost = 'ytm-notification-action-bottom-bar-renderer,ytm-notification-multi-action-renderer,ytm-notification-text-renderer,ytm-notification-action-renderer,yt-notification-action-renderer,ytd-notification-action-renderer,tp-yt-paper-toast,ytm-toast-renderer,yt-snackbar-view-model,.notification-action-response,.notification-action-bottom-bar';
   const noticeSelector = toastHost + ',[role="status"],[role="alert"]';
-  const notifications = () => Array.from(document.querySelectorAll(noticeSelector)).filter(n =>
-    visible(n) || n.closest('[data-iurub-playlist-notice]'));
-  const notificationSnapshot = () => new Map(notifications().map(n => [n, labelOf(n)]));
-  const freshNotifications = before => notifications().filter(n => before.get(n) !== labelOf(n)).map(labelOf);
+  // The visual toast can be aria-hidden when a separate live region announces the same text.
+  function noticeIsRendered(node) {
+    return node.isConnected && !node.closest('[hidden]') && node.getClientRects().length > 0 &&
+      getComputedStyle(node).display !== 'none' && getComputedStyle(node).visibility !== 'hidden';
+  }
+  const notifications = () => Array.from(document.querySelectorAll(noticeSelector)).filter(noticeIsRendered);
+  const noticeText = n => clean(n.textContent || n.getAttribute('aria-label'), 500);
+  const notificationSnapshot = () => new Map(notifications().map(n => [n, noticeText(n)]));
+  const freshNotifications = before => notifications().filter(n => before.get(n) !== noticeText(n)).map(noticeText);
   const failureNotice = text => /\b(error|failed|unable|cannot|couldn.t|impossibile|errore|riprova)\b|not (?:added|saved|removed)|non (?:salvat|aggiunt|rimoss)/i.test(text);
   const savedNotice = text => watchLaterText.test(text) && /added|saved|aggiunt[oa]|salvat[oa]/i.test(text) && !failureNotice(text);
   const removedNotice = text => watchLaterText.test(text) && /removed|rimoss[oa]|rimozione/i.test(text) && !failureNotice(text);
@@ -181,10 +189,23 @@
     return desired ? /^(?:video )?(?:salvato|aggiunto alla playlist|saved|added to playlist)(?:[.! ]*(?:annulla|undo|visualizza|view))?[.! ]*$/i.test(text)
       : /^(?:video )?(?:rimosso(?: dalla playlist)?|removed(?: from playlist)?)(?:[.! ]*(?:annulla|undo))?[.! ]*$/i.test(text);
   }
-  function beginPlaylistEdit(desired) {
-    const before = notificationSnapshot();
-    pendingNotice = {desired, before, until:Date.now() + 5000};
-    return before;
+  function trackNotice(edit) {
+    pendingNotice?.observer.disconnect();
+    if (pendingNotice) clearTimeout(pendingNotice.timer);
+    pendingNotice = edit;
+    edit.observer = new MutationObserver(records => {
+      if (window.document?.documentElement && pendingNotice === edit) inspectNoticeChanges(records);
+    });
+    edit.observer.observe(document, {childList:true, subtree:true, characterData:true, attributes:true,
+      attributeFilter:['hidden','aria-hidden','aria-label','class','style','open']});
+    edit.timer = setTimeout(() => {
+      edit.observer.disconnect();
+      if (pendingNotice === edit) pendingNotice = null;
+    }, 15000);
+    return edit;
+  }
+  function beginPlaylistEdit(video, desired) {
+    return trackNotice({video, desired, before:notificationSnapshot()});
   }
   function captureSitePlaylistAction(event) {
     if (!accountSaving || savingToAccount || event.target.closest?.('.iurub-save,.iurub-remove')) return;
@@ -199,33 +220,47 @@
     // A site's own Save command can select another list. Only an explicitly
     // named Watch Later confirmation can change our bookmark or replace its toast.
     const source = video || (menuSource?.url === location.href && Date.now() < menuSource.until ? menuSource.video : currentVideo());
-    pendingNotice = {siteAction:true, video:source, before:notificationSnapshot(), until:Date.now()+5000};
+    trackNotice({video:source, before:notificationSnapshot()});
   }
-  function updatePlaylistNotices() {
-    // YouTube may reuse the same node for errors and unrelated notifications.
-    for (const [node, text] of mutedNotices) {
-      if (!node.isConnected || text !== labelOf(node)) {
-        node.removeAttribute('data-iurub-playlist-notice');
-        mutedNotices.delete(node);
+  // The mobile confirmation with a thumbnail can be an ordinary unlabelled div.
+  // Match newly inserted result text, never a pre-existing video title or a menu command.
+  const explicitResult = /^(?:(?:video\s+)?(?:salvat[oa]|aggiunt[oa]|rimoss[oa])\s+(?:in|a|da|dalla?)|(?:video\s+)?(?:added to|saved to|removed from))\s+["“«]?(?:guarda pi[uù] tardi|watch later)["”»]?(?:[.!\s]*(?:annulla|undo|visualizza|view|modifica|edit))?[.!\s]*$/i;
+  function publishEdit(edit, saved) {
+    if (pendingNotice !== edit || edit.reported) return;
+    edit.reported = true;
+    edit.observer.disconnect();
+    if (edit.video) {
+      rememberMembership(edit.video, saved);
+      undoCandidate = {video:edit.video, saved:!saved, expires:Date.now()+15000};
+    }
+    accountResult(edit.undo ? 'undone' : saved ? 'saved' : 'removed', edit.video, saved);
+  }
+  function inspectNoticeChanges(records) {
+    const edit = pendingNotice;
+    if (!edit || edit.reported) return;
+    const labels = freshNotifications(edit.before);
+    if (labels.some(failureNotice)) { edit.failed = true; edit.observer.disconnect(); return; }
+    if (edit.failed) return;
+    for (const record of records) {
+      const changed = record.type === 'childList' ? record.addedNodes : [record.target];
+      for (const node of changed) {
+        const el = node.nodeType === 1 ? node : node.parentElement;
+        if (!el || !el.isConnected || el.closest('script,style,h1,h2,h3,h4,[role="menu"],.iurub-save,.iurub-remove,' + CARD)) continue;
+        // Bound this read to a single small message, including text split across spans.
+        for (const candidate of [el, el.parentElement]) {
+          if (!candidate || candidate.childElementCount > 8 || candidate.matches('html,body')) continue;
+          const text = (candidate.textContent || '').trim().normalize('NFC').replace(/\s+/g,' ');
+          if (text.length <= 140 && explicitResult.test(text) && noticeIsRendered(candidate)) labels.push(text);
+        }
       }
     }
-    if (!pendingNotice) return;
-    if (Date.now() > pendingNotice.until) { pendingNotice = null; return; }
-    for (const node of notifications()) {
-      const text = labelOf(node);
-      if (pendingNotice.before.get(node) === text) continue;
-      if (pendingNotice.siteAction) {
-        const saved = savedNotice(text);
-        if (!saved && !removedNotice(text)) continue;
-        if (!pendingNotice.reported) {
-          pendingNotice.reported = true;
-          if (pendingNotice.video) rememberMembership(pendingNotice.video, saved);
-          accountResult(saved ? 'saved' : 'removed', pendingNotice.video, saved);
-        }
-      } else if (!confirmsPlaylistEdit(text, pendingNotice.desired)) continue;
-      const host = node.closest(toastHost) || node;
-      host.setAttribute('data-iurub-playlist-notice','');
-      mutedNotices.set(host, labelOf(host));
+    for (const text of labels) {
+      const saved = savedNotice(text);
+      const state = saved ? true : removedNotice(text) ? false : undefined;
+      if (state !== undefined && (edit.desired === undefined || edit.desired === state)) {
+        publishEdit(edit, state);
+        return;
+      }
     }
   }
   const directWatchLater = () => menuRoots().flatMap(controls).find(n => watchLaterText.test(labelOf(n)) && /save|add|salva|aggiungi|remove|rimuovi/i.test(labelOf(n)));
@@ -234,9 +269,11 @@
     const close = menuRoots().flatMap(controls).find(n => /^(close|chiudi|done|fine)$/i.test(labelOf(n)));
     close?.click();
   }
-  async function transitionEvidence(before, desired, allowUndo = false) {
+  async function transitionEvidence(before, desired, allowUndo = false, edit = null) {
     const started = Date.now();
     return await until(() => {
+      if (edit?.failed) return 'failed';
+      if (edit?.reported) return 'confirmed';
       const notices = freshNotifications(before);
       if (notices.some(failureNotice)) return 'failed';
       if (notices.some(text => confirmsPlaylistEdit(text, desired))) return 'confirmed';
@@ -251,14 +288,17 @@
       return null;
     }, 2200);
   }
-  async function finishAccountChange(video, desired, previous, before) {
-    const evidence = await transitionEvidence(before, desired);
+  async function finishAccountChange(edit) {
+    const evidence = await transitionEvidence(edit.before, edit.desired, false, edit);
+    if (pendingNotice !== edit) return;
     if (evidence === 'confirmed') {
-      rememberMembership(video, desired);
-      undoCandidate = {video, saved:previous, expires:Date.now() + 15000};
-      accountResult(desired ? 'saved' : 'removed', video, desired);
+      publishEdit(edit, edit.desired);
       dismissChooser();
-    } else accountResult(evidence === 'failed' ? 'failed' : 'submitted', video);
+    } else {
+      if (evidence === 'failed') pendingNotice = null;
+      // A timeout is not a denial. A later site message can still settle this edit.
+      accountResult(evidence === 'failed' ? 'failed' : 'submitted', edit.video);
+    }
   }
   async function chooseCheckbox(video, desired, existing) {
     const checkbox = existing || await until(watchLaterChoice);
@@ -270,22 +310,25 @@
       accountResult(desired ? 'alreadySaved' : 'alreadyRemoved', video, selected);
       dismissChooser(); return;
     }
-    const before = beginPlaylistEdit(desired);
+    const edit = beginPlaylistEdit(video, desired);
     checkbox.click();
     const confirm = menuRoots().flatMap(controls).find(n => /^(done|save|fine|salva)$/i.test(labelOf(n)));
     confirm?.click();
-    await finishAccountChange(video, desired, selected, before);
+    await finishAccountChange(edit);
   }
-  async function chooseWatchLater(video, desired) {
+  async function chooseWatchLater(video, desired, opening) {
     const entry = await until(() => {
+      if (opening.reported || opening.failed) return {handled:true};
       const checkbox = watchLaterChoice();
       if (checkbox) return {checkbox};
       const direct = directWatchLater();
-      if (direct) return {direct};
-      const playlist = menuRoots().flatMap(controls).find(n => /save to playlist|salva (in una|nella|in) playlist|salva in una raccolta/i.test(labelOf(n)));
+      if (direct && (desired || directState(direct))) return {direct};
+      const playlist = menuRoots().flatMap(controls).find(n =>
+        /save to (?:a )?playlist|salva (?:in una|nella|in) playlist|salva in una raccolta/i.test(labelOf(n)));
       return playlist ? {playlist} : null;
     });
-    if (!entry) { accountResult('manual', video); return; }
+    if (entry?.handled) return;
+    if (!entry) { accountResult('submitted', video); return; }
     if (entry.direct) {
       const selected = directState(entry.direct);
       if (selected === null) { accountResult('choose', video); return; }
@@ -294,9 +337,9 @@
         accountResult(desired ? 'alreadySaved' : 'alreadyRemoved', video, selected);
         dismissChooser(); return;
       }
-      const before = beginPlaylistEdit(desired);
+      const edit = beginPlaylistEdit(video, desired);
       entry.direct.click();
-      await finishAccountChange(video, desired, selected, before);
+      await finishAccountChange(edit);
     } else if (entry.playlist) {
       entry.playlist.click();
       await chooseCheckbox(video, desired);
@@ -318,8 +361,9 @@
         if (actions) opener = controls(actions).find(n => /^(save|salva)$/i.test(labelOf(n)));
       }
       if (!opener) { accountResult('manual', video); return; }
+      const opening = beginPlaylistEdit(video, desired);
       opener.click();
-      await chooseWatchLater(video, desired);
+      await chooseWatchLater(video, desired, opening);
     } catch { accountResult('manual', video); }
     finally { savingToAccount = false; if (button) button.disabled = false; }
   }
@@ -345,13 +389,15 @@
   function observeUndo(event) {
     const control = event.target.closest?.('button,[role="button"]');
     if (!control || !/^(undo|annulla)$/i.test(labelOf(control)) || !undoCandidate || Date.now() > undoCandidate.expires) return;
-    if (!control.closest(noticeSelector)) return;
+    const container = control.closest(noticeSelector) || control.parentElement;
+    if (!container || (!control.closest(noticeSelector) && !explicitResult.test(clean(container.textContent, 200)))) return;
     const context = undoCandidate;
     const before = notificationSnapshot();
+    const undoEdit = trackNotice({video:context.video, desired:context.saved, before, undo:true});
     undoCandidate = null;
     // YouTube owns Undo; a confirming update, rather than the click, is evidence.
     setTimeout(async () => {
-      if (await transitionEvidence(before, context.saved, true) === 'confirmed') rememberMembership(context.video, context.saved);
+      if (await transitionEvidence(before, context.saved, true, undoEdit) === 'confirmed' && !undoEdit.reported && pendingNotice === undoEdit) publishEdit(undoEdit, context.saved);
     }, 0);
   }
   function setBookmarkLabel(button, label) {
@@ -488,6 +534,7 @@
       updateButton(button, link.id);
     });
     reportCurrent();
+    if (miniEnabled) setMiniPlayer(true);
     reportMediaControls();
     applyResume();
     reportPlayback();
@@ -559,14 +606,50 @@
   const mainVideo = () => document.querySelector('#movie_player video') || document.querySelector('video.html5-main-video') || document.querySelector('video');
   const speeds = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
   const detached = media => Boolean(media && (media.webkitPresentationMode === 'picture-in-picture' || document.pictureInPictureElement === media));
-  let lastControls = '', enteringPiP = null;
+  let lastControls = '', enteringPiP = null, backgroundHandoff = null;
+  let miniEnabled = false, miniElement = null;
+  function setMiniPlayer(enabled) {
+    miniEnabled = trackPlayback && Boolean(enabled);
+    const media = miniEnabled ? mainVideo() : null;
+    if (miniElement !== media) {
+      document.querySelectorAll('[data-iurub-player-path],[data-iurub-mini-video]').forEach(n => {
+        n.removeAttribute('data-iurub-player-path'); n.removeAttribute('data-iurub-mini-video');
+      });
+      if (media) {
+        media.setAttribute('data-iurub-mini-video','');
+        for (let p=media.parentElement; p && p !== document.documentElement; p=p.parentElement) p.setAttribute('data-iurub-player-path','');
+      }
+      miniElement = media;
+    }
+    document.documentElement.classList.toggle('iurub-mini', Boolean(media));
+  }
+  function resumeIfInterruptedDuringHandoff(request) {
+    const media = request.media;
+    if (!request.continuePlaying || !media.paused || media.ended || !detached(media) ||
+        mainVideo() !== media || request.id !== parseLink(location.href)?.id || navigator.audioSession?.state === 'interrupted') return;
+    request.continuePlaying = false;
+    media.play().catch(() => {});
+  }
+  function resumeDetachedRequest() {
+    const request = enteringPiP;
+    if (request && detached(request.media)) {
+      enteringPiP = null;
+      resumeIfInterruptedDuringHandoff(request);
+      if (!request.continuePlaying && backgroundHandoff?.media === request.media) backgroundHandoff.continuePlaying = false;
+    }
+    // iOS can deliver its inline pause after the presentation-mode event, even
+    // when a PiP window was already open. Only cover the actual app-exit interval.
+    if (backgroundHandoff && document.visibilityState === 'hidden' && performance.now() < backgroundHandoff.expires) {
+      resumeIfInterruptedDuringHandoff(backgroundHandoff);
+    }
+  }
   function reportMediaControls() {
     const id = parseLink(location.href)?.id;
     if (!trackPlayback || !id) return;
     const media = mainVideo();
-    if (enteringPiP?.media === media && detached(media)) enteringPiP = null;
+    resumeDetachedRequest();
     const rate = media?.readyState >= 1 && Number.isFinite(media.playbackRate) ? media.playbackRate : null;
-    const state = {id, session:playbackSession, rate, detached:detached(media)};
+    const state = {id, session:playbackSession, rate, detached:detached(media), playing:Boolean(media && !media.paused && !media.ended), ended:Boolean(media?.ended)};
     const key = JSON.stringify(state);
     if (key !== lastControls) { lastControls = key; post('mediaControls', state); }
   }
@@ -577,7 +660,7 @@
     if (next == null) return false;
     try { media.playbackRate = next; reportMediaControls(); return media.playbackRate === next; } catch { return false; }
   }
-  function togglePiP(id, notifyFailure = true) {
+  function togglePiP(id, notifyFailure = true, wasPlayingAtHandoff = false) {
     const media = mainVideo();
     if (!trackPlayback || parseLink(location.href)?.id !== id || !media || media.readyState < 2) return 'notReady';
     const active = detached(media);
@@ -586,8 +669,8 @@
       media.webkitSupportsPresentationMode?.(active ? 'inline' : 'picture-in-picture');
     if (!webkitAPI && !(active ? typeof document.exitPictureInPicture === 'function' :
       document.pictureInPictureEnabled && typeof media.requestPictureInPicture === 'function')) return 'unavailable';
-    if (!active && (media.paused || media.ended)) return 'playFirst';
-    const request = {media};
+    if (!active && (media.ended || (media.paused && !wasPlayingAtHandoff))) return 'playFirst';
+    const request = {media, id, continuePlaying:!active && (!media.paused || wasPlayingAtHandoff)};
     enteringPiP = active ? null : request;
     const failed = () => {
       if (parseLink(location.href)?.id !== id || mainVideo() !== media || detached(media) !== active) return;
@@ -606,17 +689,25 @@
       return 'requested';
     } catch { enteringPiP = null; return 'unavailable'; }
   }
-  for (const event of ['loadedmetadata','emptied','ratechange','webkitpresentationmodechanged','enterpictureinpicture','leavepictureinpicture']) {
+  for (const event of ['playing','play','pause','ended','loadedmetadata','emptied','ratechange','webkitpresentationmodechanged','enterpictureinpicture','leavepictureinpicture']) {
     document.addEventListener(event, reportMediaControls, true);
   }
-  function enterBackground(id) {
+  function enterBackground(id, wasPlayingAtHandoff = false, leavingApp = false) {
     if (!trackPlayback || parseLink(location.href)?.id !== id) return;
     reportPlayback(true);
     const media = mainVideo();
-    if (!media || media.paused || media.ended || detached(media) || enteringPiP?.media === media) return;
+    if (!media || media.ended || (media.paused && !wasPlayingAtHandoff)) return;
+    if (leavingApp && backgroundHandoff?.media !== media) {
+      backgroundHandoff = {id, media, continuePlaying:true, expires:performance.now()+2500};
+    }
+    if (detached(media)) {
+      resumeDetachedRequest();
+      return;
+    }
+    if (enteringPiP?.media === media) return;
     // Ask WebKit for the system window if possible. Let the site's playing media
-    // continue as audio otherwise; never resume a paused or interrupted stream.
-    togglePiP(id, false);
+    // retain ownership if a lifecycle suspension raced the native snapshot.
+    togglePiP(id, false, wasPlayingAtHandoff);
   }
   if (trackPlayback) {
     try { if (navigator.audioSession?.type === 'auto') navigator.audioSession.type = 'playback'; } catch {}
@@ -713,7 +804,10 @@
   }
   for (const name of ['loadedmetadata', 'canplay', 'timeupdate', 'seeked', 'pause', 'ended', 'emptied']) document.addEventListener(name, playbackEvent, true);
   window.addEventListener('pagehide', () => reportPlayback(true));
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') reportPlayback(true); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') { reportPlayback(true); resumeDetachedRequest(); }
+    else { backgroundHandoff = null; }
+  });
   function checkRoute() {
     if (!shortsEnabled && isShortRoute(location.href)) {
       post('blockedShort');
@@ -766,14 +860,16 @@
     currentVideo,
     stepSpeed,
     togglePiP,
+    setMiniPlayer,
     pauseWhenHidden,
     enterBackground,
+    foreground() { backgroundHandoff = null; },
     playbackSnapshot,
     restorePlayback,
     adoptPlayback,
     saveCurrentToYouTube() { saveThroughYouTube(null, currentVideo(), null); },
     toggleCurrentToYouTube() { saveThroughYouTube(null, currentVideo(), null); },
-    pause() { reportPlayback(true); document.querySelectorAll('video,audio').forEach(media => media.pause()); }
+    pause() { enteringPiP = null; backgroundHandoff = null; reportPlayback(true); document.querySelectorAll('video,audio').forEach(media => media.pause()); }
   };
   if (document.documentElement) {
     document.documentElement.classList.toggle('iurub-no-shorts', !shortsEnabled);
@@ -782,7 +878,6 @@
   if (initial.resume) restorePlayback(initial.resume);
   const observer = new MutationObserver(records => {
     if (!window.document?.documentElement) return;
-    if (pendingNotice || mutedNotices.size) updatePlaylistNotices();
     if (records.every(record => record.type === 'characterData')) return;
     for (const record of records) for (const node of record.removedNodes) {
       if (node.nodeType !== 1) continue;

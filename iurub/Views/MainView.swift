@@ -13,7 +13,7 @@ struct MainView: View {
     @State private var selectedTab = 1
     @State private var showingSettings = false
     @State private var didStart = false
-    @State private var preparingBackgroundPlayer = false
+    @State private var floating = false
     @State private var openingVideoToken = UUID()
     // Session-only hints come from the account UI, never the legacy local library.
     // Missing IDs in a partially loaded playlist do not mean "not saved".
@@ -35,6 +35,11 @@ struct MainView: View {
             browserTab(home)
                 .tabItem { Label("Esplora", systemImage: "safari") }.tag(4)
         }
+        .overlayPreferenceValue(PlayerViewportKey.self) { anchor in
+            PersistentVideoSurface(session: player, viewport: anchor, inPlayer: selectedTab == 0,
+                                   floating: floating, expand: { selectTab(0) }, close: stopFloating)
+        }
+        .onChange(of: player.videoEnded) { _, ended in if ended { floating = false } }
         #if DEBUG
         .overlay(alignment: .topLeading) {
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
@@ -78,34 +83,35 @@ struct MainView: View {
                 if tab != 1 { watchLater.openStartPage() }
             }
             if old == 0 { player.captureProgress() }
-            for (index, session) in sessions.enumerated() where index != tab { session.pauseWhenHidden() }
-            if tab == 0 { ensurePlayer() }
+            for (index, session) in sessions.enumerated() where index != tab && session !== player {
+                session.pauseWhenHidden()
+            }
+            if tab == 0 {
+                floating = false
+                player.setMiniPlayer(false)
+                player.returnFromPictureInPicture()
+                ensurePlayer()
+            }
             else if tab == 1 { watchLater.openStartPage() }
             else if tab == 3 && old != 0 { history.openStartPage() }
             else { sessions[tab].startIfNeeded() }
         }
         .onChange(of: showingSettings) { _, showing in if showing { pauseAll() } }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .inactive {
+            if phase == .active {
+                player.endBackgroundHandoff()
                 player.captureProgress()
-                if selectedTab == 0 && !showingSettings && !player.isDetached {
-                    preparingBackgroundPlayer = true
-                    player.prepareBackgroundPlayback()
-                }
-            } else if phase == .background {
-                if selectedTab == 0 && !showingSettings {
-                    preparingBackgroundPlayer = true
-                    player.prepareBackgroundPlayback()
-                } else {
-                    player.pauseWhenHidden()
-                }
-                for session in sessions where session !== player { session.pauseWhenHidden() }
-            } else if phase == .active && preparingBackgroundPlayer {
-                preparingBackgroundPlayer = false
-                if selectedTab == 0 { player.returnFromPictureInPicture() }
+            } else if phase == .inactive || phase == .background {
                 player.captureProgress()
+                if (selectedTab == 0 || floating) && !showingSettings { player.prepareBackgroundPlayback(leavingApp: true) }
             }
         }
+        #if os(iOS)
+        .onReceive(NotificationCenter.default.publisher(for: UIScene.willDeactivateNotification)) { _ in
+            // Ask while the video is still attached, before WebKit can suspend the inline element.
+            if (selectedTab == 0 || floating) && !showingSettings { player.prepareBackgroundPlayback(leavingApp: true) }
+        }
+        #endif
         .onOpenURL { url in
             guard url.scheme == "iurub", url.host == "open",
                   let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "url" })?.value,
@@ -188,9 +194,9 @@ struct MainView: View {
                 guard !accountContextNeedsRefresh, youtubeMembership[video.id] != saved else { return }
                 youtubeMembership[video.id] = saved
             }
-            session.onPlaylistEdit = {
+            session.onPlaylistEdit = { needsVerification in
                 // A confirmation can arrive after the user has already returned to Salvati.
-                if selectedTab == 1 && session !== watchLater { watchLater.openStartPage() }
+                if session !== watchLater && (selectedTab == 1 || needsVerification) { watchLater.openStartPage() }
             }
             session.onYouTubeSaved = { video in
                 guard settings.automaticSummariesEnabled else { return }
@@ -283,10 +289,17 @@ struct MainView: View {
             resetMembershipHints()
             if tab != 1 { watchLater.openStartPage() }
         }
-        if tab != 0 { openingVideoToken = UUID() }
+        if tab != 0 {
+            openingVideoToken = UUID()
+            if selectedTab == 0 && (player.isPlaying || player.isDetached) {
+                floating = true
+                player.prepareBackgroundPlayback()
+                player.setMiniPlayer(true)
+            }
+        }
         if selectedTab == tab {
             if tab == 0 {
-                // A second tap must never reset the current video's playhead.
+                player.returnFromPictureInPicture()
                 ensurePlayer()
             } else {
                 pauseAll()
@@ -297,8 +310,78 @@ struct MainView: View {
         }
     }
 
+    private func stopFloating() {
+        floating = false
+        player.pause()
+        player.setMiniPlayer(false)
+        player.returnFromPictureInPicture()
+    }
+
     private func pauseAll() {
-        sessions.forEach { $0.pauseWhenHidden() }
+        for session in sessions where session !== player || !floating { session.pauseWhenHidden() }
+    }
+}
+
+struct PlayerViewport {
+    var page: Anchor<CGRect>?
+    var controls: Anchor<CGRect>?
+}
+
+struct PlayerViewportKey: PreferenceKey {
+    static var defaultValue: PlayerViewport { PlayerViewport() }
+    static func reduce(value: inout PlayerViewport, nextValue: () -> PlayerViewport) {
+        let next = nextValue()
+        value.page = next.page ?? value.page
+        value.controls = next.controls ?? value.controls
+    }
+}
+
+/// One mounted WKWebView supplies the full player, the in-app mini player and system PiP.
+private struct PersistentVideoSurface: View {
+    @ObservedObject var session: BrowserSession
+    let viewport: PlayerViewport
+    let inPlayer: Bool
+    let floating: Bool
+    let expand: () -> Void
+    let close: () -> Void
+
+    var body: some View {
+        GeometryReader { geometry in
+            let width = min(192, geometry.size.width * 0.46)
+            let mini = CGRect(x: max(0, geometry.size.width - width - 12), y: 58,
+                              width: width, height: width * 9 / 16)
+            let full = viewport.page.map { geometry[$0] } ?? .zero
+            let controlsTop = viewport.controls.map { geometry[$0].minY } ?? full.maxY
+            let inline = inPlayer && full.width > 0
+            let small = !inPlayer && floating && !session.isDetached
+            let rect = inline ? CGRect(x: full.minX, y: full.minY, width: full.width,
+                                       height: min(full.height, max(1, controlsTop - full.minY))) : mini
+            ZStack(alignment: .topTrailing) {
+                YouTubeWebView(session: session, hidesWebAccessibility: !inline)
+                    .allowsHitTesting(inline)
+                    .accessibilityHidden(!inline)
+                if inline && session.isLoading {
+                    ProgressView().padding(8).background(.regularMaterial, in: Capsule()).frame(maxWidth: .infinity).padding(.top, 8)
+                }
+                if small {
+                    Button(action: expand) { Color.clear.contentShape(Rectangle()) }
+                        .accessibilityLabel("Espandi video").accessibilityIdentifier("miniPlayerExpand")
+                    Button(action: close) {
+                        Image(systemName: "xmark.circle.fill").font(.title3).symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, .black.opacity(0.7)).frame(width: 40, height: 40)
+                    }
+                    .accessibilityLabel("Chiudi mini player").accessibilityIdentifier("miniPlayerClose")
+                }
+            }
+            .buttonStyle(.plain)
+            .frame(width: max(1, rect.width), height: max(1, rect.height))
+            .background(small ? Color.black : .clear)
+            .clipShape(RoundedRectangle(cornerRadius: small ? 14 : 0))
+            .shadow(color: .black.opacity(small ? 0.22 : 0), radius: 8, y: 2)
+            .opacity((inline || small) && session.loadError == nil ? 1 : 0)
+            .allowsHitTesting((inline || small) && session.loadError == nil)
+            .position(x: rect.midX, y: rect.midY)
+        }
     }
 }
 

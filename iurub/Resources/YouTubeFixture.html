@@ -65,9 +65,10 @@ function renderPage(page) {
       window.fixtureAccountIDs = removing ? window.fixtureAccountIDs.filter(value => value !== id) : [...window.fixtureAccountIDs, id];
       accountMessage(removing ? 'fixtureAccountRemove' : 'fixtureAccountSave', id);
       menu.remove();
-      document.querySelectorAll('[role="status"]').forEach(node => node.remove());
-      const toast = document.createElement('div'); toast.setAttribute('role','status');
-      toast.textContent = removing ? 'Rimosso da Guarda più tardi ' : 'Aggiunto a Guarda più tardi';
+      document.querySelectorAll('[role="status"],.fixture-native-notice').forEach(node => node.remove());
+      const toast = document.createElement('div');
+      toast.className = 'fixture-native-notice';
+      toast.textContent = removing ? 'Rimosso da Guarda più tardi ' : 'Salvato in Guarda più tardi';
       if (removing) {
         const undo = document.createElement('button'); undo.textContent = 'Annulla';
         undo.onclick = () => {
@@ -77,7 +78,7 @@ function renderPage(page) {
         };
         toast.append(undo);
       }
-      document.body.append(toast);
+      setTimeout(() => document.body.append(toast), window.fixtureNoticeDelay || 0);
     };
     menu.append(entry); document.body.append(menu);
   };

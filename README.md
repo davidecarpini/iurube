@@ -1,6 +1,6 @@
 # iurub
 
-Versione **1.6.0**. Client personale per iPhone, SwiftUI + WKWebView, iOS 17+. Nessun backend da configurare. I riassunti usano Gemini tramite la tua chiave OpenRouter, custodita nel Portachiavi.
+Versione **1.6.1**. Client personale per iPhone, SwiftUI + WKWebView, iOS 17+. Nessun backend da configurare. I riassunti usano Gemini tramite la tua chiave OpenRouter, custodita nel Portachiavi.
 
 ## Navigazione
 
@@ -22,7 +22,7 @@ Aprendo un video da una delle altre sezioni, iurub passa automaticamente a **In 
 
 Il segnalibro diventa pieno quando iurub verifica che il video è in Guarda più tardi. Toccandolo di nuovo rimuovi il video dalla playlist; lo stato viene condiviso tra le tab e con il player. Iurub usa i controlli e le conferme di YouTube: un comando non confermato non viene mostrato come riuscito. La lista Salvati viene letta anche quando all’avvio si riprende un video.
 
-In **Salvati** ogni riga ha un segnalibro pieno che puoi toccare per rimuovere il video. Una modifica confermata mostra un solo messaggio, **Salvato** o **Rimosso**. Nelle impostazioni puoi abilitare gli Shorts, nascosti inizialmente, per tutte le sezioni.
+In **Salvati** ogni riga ha un segnalibro pieno che puoi toccare per rimuovere il video. YouTube mostra la propria conferma, anche con miniatura e pulsante **Annulla**. Il segnalibro segue la conferma del sito anche se arriva in ritardo. Nelle impostazioni puoi abilitare gli Shorts, nascosti inizialmente, per tutte le sezioni.
 
 Tutte le sezioni condividono lo stesso archivio WebKit di cookie e sessione. Accedendo a YouTube nell’app, anche le altre pagine usano quell’account. Le modifiche alla playlist compaiono sugli altri dispositivi collegati allo stesso account. Se non hai effettuato l’accesso, YouTube mostra la sua schermata di login.
 
@@ -38,7 +38,9 @@ Il progresso viene registrato circa ogni cinque secondi durante la riproduzione,
 
 ## Finestra video e velocità
 
-La barra **In linea** tiene sempre a portata di mano **Salva**, **Finestra**, i controlli di velocità e **Riassunto**. Se passi alla Home o apri un’altra app mentre guardi il video, iurub chiede la finestra di sistema dove disponibile e lascia proseguire la riproduzione audio quando WebKit e YouTube lo consentono. Puoi anche aprire la finestra manualmente. Rientrando in **In corso** il video torna nel player. Una chiusura forzata termina la riproduzione.
+La barra **In linea** tiene a portata di mano **Salva**, **Finestra**, i controlli di velocità e **Riassunto**. Cambiando tab durante la riproduzione, il video resta in finestra. Se il PiP di sistema non è disponibile, iurub mostra lo stesso player in miniatura sopra la tab aperta. Tocca la miniatura per espanderla o la × per fermarla.
+
+Quando lasci iurub per la Home, l’app chiede la finestra di sistema per il video già avviato. Se WebKit sospende il video mentre entra in PiP, iurub chiede una sola ripresa collegata a quel passaggio. La finestra di sistema dipende dal dispositivo e dal sito. Puoi rientrare nel player da **In corso**. Una chiusura forzata termina la riproduzione.
 
 Usa **−** e **+** accanto alla velocità per passare da **0,5× a 2×** a passi di 0,25×. Il numero al centro mostra la velocità effettiva, anche se la cambi dal menu YouTube.
 

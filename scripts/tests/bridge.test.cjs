@@ -170,13 +170,13 @@ test('account button uses the YouTube menu and never writes the device library',
   } finally { dom.window.close(); }
 });
 
-test('only the Watch Later confirmation is hidden; a recycled error remains visible', async () => {
+test('both the original Watch Later notice and a recycled error remain visible', async () => {
   const {dom,d,w,messages} = await setup(fixture, 'https://m.youtube.com/', {saveDestination:'youtube'});
   try {
     d.querySelector('.iurub-save').click();
     await wait(300);
-    const toast = d.querySelector('[role="status"]');
-    assert.equal(w.getComputedStyle(toast).display, 'none');
+    const toast = d.querySelector('.fixture-native-notice');
+    assert.notEqual(w.getComputedStyle(toast).display, 'none');
     assert.equal(messages.filter(m => m.type === 'youtubeSaveResult' && m.status === 'saved').length, 1);
     toast.textContent = 'Errore di connessione';
     await wait();
@@ -195,9 +195,29 @@ test('a manual YouTube action shares only the confirmed Watch Later state with i
     assert.equal(messages.filter(m=>m.type==='youtubeSaveResult').length,0);
     notice.textContent='Salvato in Guarda più tardi';
     await wait();
-    assert.equal(w.getComputedStyle(notice).display,'none');
+    assert.notEqual(w.getComputedStyle(notice).display,'none');
     const changes=messages.filter(m=>m.type==='youtubeSaveResult');
     assert.equal(changes.length,1); assert.equal(changes[0].video.id,'jfKfPfyJRdk'); assert.equal(changes[0].saved,true);
+  } finally {dom.window.close();}
+});
+
+test('a late thumbnail message without a role confirms the tapped card once and remains visible', async () => {
+  const html='<ytm-video-with-context-renderer><a href="/watch?v=jfKfPfyJRdk"><h3>Video</h3></a><button id="menu" aria-label="Menu Azione">Menu</button></ytm-video-with-context-renderer>';
+  const {dom,d,w,messages}=await setup(html,'https://m.youtube.com/',{saveDestination:'youtube'});
+  try {
+    d.getElementById('menu').onclick=()=>{
+      d.body.insertAdjacentHTML('beforeend','<div role="dialog"><button id="action">Salva in Guarda più tardi</button></div>');
+      d.getElementById('action').onclick=()=>d.querySelector('[role="dialog"]').remove();
+    };
+    const mark=d.querySelector('.iurub-save');
+    mark.click();
+    await wait(2400);
+    assert.equal(mark.dataset.saved,'false');
+    d.body.insertAdjacentHTML('beforeend','<a id="photo-notice" href="/playlist?list=WL" aria-hidden="true"><img alt=""><span>Salvato in <b>Guarda più tardi</b></span></a>');
+    await wait();
+    assert.equal(mark.dataset.saved,'true');
+    assert.notEqual(w.getComputedStyle(d.getElementById('photo-notice')).display,'none');
+    assert.equal(messages.filter(m=>m.type==='youtubeSaveResult' && m.status==='saved').length,1);
   } finally {dom.window.close();}
 });
 
@@ -536,6 +556,48 @@ test('leaving the app requests PiP only for the playing video and leaves backgro
   } finally {dom.window.close();}
 });
 
+test('a lifecycle pause during handoff resumes only inside the confirmed system window', async () => {
+  const {dom,d,w}=await playbackSetup();
+  try {
+    const media=d.querySelector('video'), id='jfKfPfyJRdk';
+    let mode='inline', requests=0, resumes=0;
+    Object.defineProperty(media,'paused',{value:true});
+    Object.defineProperty(media,'webkitPresentationMode',{get:()=>mode});
+    media.webkitSupportsPresentationMode=()=>true;
+    media.webkitSetPresentationMode=()=>{requests++;};
+    media.play=async()=>{resumes++;};
+    w.iurub.enterBackground(id,false);
+    assert.equal(requests,0);
+    w.iurub.enterBackground(id,true);
+    assert.equal(requests,1); assert.equal(resumes,0);
+    mode='picture-in-picture';
+    media.dispatchEvent(new w.Event('webkitpresentationmodechanged'));
+    media.dispatchEvent(new w.Event('enterpictureinpicture'));
+    w.iurub.enterBackground(id,true);
+    assert.equal(resumes,1); assert.equal(requests,1);
+  } finally {dom.window.close();}
+});
+
+test('an already floating window resumes at most once on a system-induced Home transition', async () => {
+  const {dom,d,w}=await playbackSetup();
+  try {
+    const media=d.querySelector('video'), id='jfKfPfyJRdk';
+    let paused=false, hidden=false, resumes=0, mode='picture-in-picture';
+    Object.defineProperty(media,'paused',{get:()=>paused});
+    Object.defineProperty(media,'webkitPresentationMode',{get:()=>mode});
+    Object.defineProperty(d,'visibilityState',{get:()=>hidden?'hidden':'visible'});
+    media.play=async()=>{resumes++;};
+    w.iurub.enterBackground(id,true,true);
+    paused=true; hidden=true;
+    d.dispatchEvent(new w.Event('visibilitychange'));
+    media.dispatchEvent(new w.Event('pause'));
+    assert.equal(resumes,1);
+    w.iurub.foreground();
+    w.iurub.enterBackground(id,false,true);
+    assert.equal(resumes,1,'a user-paused video must stay paused');
+  } finally {dom.window.close();}
+});
+
 test('media controls respect site restrictions, the current video, and changes from the site player', async () => {
   const {dom,d,w,messages} = await playbackSetup();
   try {
@@ -828,7 +890,7 @@ test('filled account bookmark toggles removal through YouTube and confirmed Undo
     assert.equal(removed.saved, false);
     assert.equal(removed.video.id, 'jfKfPfyJRdk');
     assert.equal(membershipMessages(messages).at(-1).saved, false);
-    d.querySelector('[role="status"] button').click(); await wait(400);
+    d.querySelector('.fixture-native-notice button').click(); await wait(400);
     assert.equal(w.fixtureAccountIDs.includes('jfKfPfyJRdk'), true);
     assert.equal(bookmark.dataset.saved, 'true');
     assert.equal(membershipMessages(messages).at(-1).saved, true);
@@ -866,6 +928,27 @@ test('removal unchecks only Watch later and leaves other selected playlists inta
     const result = messages.filter(message=>message.type==='youtubeSaveResult').at(-1);
     assert.equal(result.status, 'removed'); assert.equal(result.saved, false);
   } finally { dom.window.close(); }
+});
+
+test('an add-only shortcut cannot confirm removal of a saved video', async () => {
+  const html='<ytm-video-with-context-renderer><a href="/watch?v=jfKfPfyJRdk"><h3>Video</h3></a><button id="menu" aria-label="Menu Azione">Menu</button></ytm-video-with-context-renderer>';
+  const {dom,d,messages}=await setup(html,'https://m.youtube.com/',{saveDestination:'youtube',savedIDs:['jfKfPfyJRdk']});
+  try {
+    let unchecked=false;
+    d.getElementById('menu').onclick=()=>{
+      d.body.insertAdjacentHTML('beforeend','<div role="menu"><button>Salva in Guarda più tardi</button><button id="lists">Salva in una playlist</button></div>');
+      d.getElementById('lists').onclick=()=>{
+        d.querySelector('[role="menu"]').remove();
+        d.body.insertAdjacentHTML('beforeend','<div role="dialog"><label><input id="wl" type="checkbox" checked>Guarda più tardi</label></div>');
+        d.getElementById('wl').onclick=e=>{unchecked=!e.target.checked;};
+      };
+    };
+    const bookmark=d.querySelector('.iurub-save');
+    bookmark.click(); await wait(600);
+    assert.equal(unchecked,true);
+    assert.equal(bookmark.dataset.saved,'false');
+    assert.equal(messages.filter(m=>m.type==='youtubeSaveResult').at(-1).status,'removed');
+  } finally {dom.window.close();}
 });
 
 test('a failed checkbox save never publishes saved=true or fills the bookmark', async () => {

@@ -30,13 +30,14 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     @Published private(set) var isLoading = false
     @Published private(set) var mediaRate: Double?
     @Published private(set) var isDetached = false
+    @Published private(set) var isPlaying = false
+    @Published private(set) var videoEnded = false
     @Published private(set) var canGoBack = false
     @Published private(set) var currentVideo: SavedVideo?
     @Published private(set) var loadError: String?
     @Published var notice: String?
     @Published var externalURL: URL?
-    let saveFeedback = PassthroughSubject<String, Never>()
-    var onPlaylistEdit: (() -> Void)?
+    var onPlaylistEdit: ((_ verifyAgainstPlaylist: Bool) -> Void)?
     @Published private(set) var youtubeSavedIDs: Set<String> = []
     @Published private(set) var youtubeRemovedIDs: Set<String> = []
     private(set) var webView: WKWebView!
@@ -58,6 +59,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     private var lastBrowseURL: URL?
     private var activePlaybackID: String?
     private var playbackSession = UUID().uuidString
+    private var departingPlayingID: String?
     private var navigationGeneration = UUID()
     private var pendingHistoryAdoption: [String: Any]?
     #if DEBUG
@@ -247,6 +249,8 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         lastPlayback = nil
         mediaRate = nil
         isDetached = false
+        isPlaying = false
+        videoEnded = false
         currentVideo = video
         installScripts()
         #if DEBUG
@@ -363,14 +367,26 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         if webView.url == nil { load(lastURL) } else { webView.reload() }
     }
     func pause() {
+        departingPlayingID = nil
         captureProgress()
         webView.pauseAllMediaPlayback(completionHandler: nil)
         webView.evaluateJavaScript("window.iurub?.pause();", completionHandler: nil)
     }
 
-    func prepareBackgroundPlayback() {
+    func setMiniPlayer(_ enabled: Bool) {
+        webView.evaluateJavaScript("window.iurub?.setMiniPlayer(\(enabled));", completionHandler: nil)
+    }
+
+    func prepareBackgroundPlayback(leavingApp: Bool = false) {
         guard role == .player, let id = currentVideo?.id, VideoLink.validID(id) else { return }
-        webView.evaluateJavaScript("window.iurub?.enterBackground('\(id)');", completionHandler: nil)
+        if leavingApp && isPlaying { departingPlayingID = id }
+        let wasPlaying = isPlaying || (leavingApp && departingPlayingID == id)
+        webView.evaluateJavaScript("window.iurub?.enterBackground('\(id)', \(wasPlaying), \(leavingApp));", completionHandler: nil)
+    }
+
+    func endBackgroundHandoff() {
+        departingPlayingID = nil
+        webView.evaluateJavaScript("window.iurub?.foreground();", completionHandler: nil)
     }
 
     /// An in-app tab switch must not pause the system PiP window.
@@ -481,6 +497,8 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
             } else {
                 mediaRate = (body["rate"] as? Double).flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
                 isDetached = body["detached"] as? Bool ?? false
+                isPlaying = body["playing"] as? Bool ?? false
+                videoEnded = body["ended"] as? Bool ?? false
             }
         case "playback": acceptPlayback(body)
         case "save":
@@ -520,14 +538,9 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
                 }
             }
             switch body["status"] as? String {
-            case "saved", "removed":
-                onPlaylistEdit?()
-                saveFeedback.send(body["status"] as? String == "saved" ? "Salvato" : "Rimosso")
-            case "alreadySaved": saveFeedback.send("Salvato")
-            case "alreadyRemoved": saveFeedback.send("Rimosso")
-            case "submitted":
-                onPlaylistEdit?()
-                notice = "YouTube non ha confermato la modifica. Apri Salvati per controllare."
+            case "submitted": onPlaylistEdit?(true)
+            case "saved", "removed", "undone": onPlaylistEdit?(false)
+            case "alreadySaved", "alreadyRemoved", "failed": break  // YouTube presents the result.
             case "choose": notice = "Seleziona Guarda più tardi nel menu YouTube."
             default: notice = "Apri il menu del video su YouTube e scegli Guarda più tardi. Se richiesto, accedi al tuo account."
             }
@@ -708,7 +721,8 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
               var html = try? String(contentsOf: url, encoding: .utf8) else { return }
         let ids = UserDefaults(suiteName: "it.davidecarpini.iurub.uitests")!.stringArray(forKey: "fixtureAccountIDs") ?? ["M7lc1UVf-VE"]
         let data = try! JSONSerialization.data(withJSONObject: ids)
-        html = html.replacingOccurrences(of: "/*IURUB_FIXTURE_ACCOUNT*/", with: "window.fixtureAccountIDs = \(String(decoding: data, as: UTF8.self)); window.fixtureStartPage = '\(page.rawValue)';")
+        let noticeDelay = ProcessInfo.processInfo.arguments.contains("--late-playlist-toast") ? 3200 : 0
+        html = html.replacingOccurrences(of: "/*IURUB_FIXTURE_ACCOUNT*/", with: "window.fixtureNoticeDelay = \(noticeDelay); window.fixtureAccountIDs = \(String(decoding: data, as: UTF8.self)); window.fixtureStartPage = '\(page.rawValue)';")
         hasLoaded = true
         webView.loadHTMLString(html, baseURL: page.url)
     }
@@ -725,12 +739,17 @@ private final class MessageProxy: NSObject, WKScriptMessageHandler {
 #if os(iOS)
 struct YouTubeWebView: UIViewRepresentable {
     let session: BrowserSession
+    var hidesWebAccessibility = false
     func makeUIView(context: Context) -> WKWebView { session.webView }
-    func updateUIView(_ uiView: WKWebView, context: Context) {}
+    func updateUIView(_ uiView: WKWebView, context: Context) {
+        uiView.accessibilityElementsHidden = hidesWebAccessibility
+        uiView.accessibilityIdentifier = session.role == .player ? "youtube-player" : "youtube-" + session.startPage.rawValue
+    }
 }
 #else
 struct YouTubeWebView: NSViewRepresentable {
     let session: BrowserSession
+    var hidesWebAccessibility = false
     func makeNSView(context: Context) -> WKWebView { session.webView }
     func updateNSView(_ nsView: WKWebView, context: Context) {}
 }

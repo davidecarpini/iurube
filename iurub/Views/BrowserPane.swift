@@ -16,11 +16,20 @@ struct BrowserPane: View {
     @State private var summaryVideo: SavedVideo?
     @Environment(\.openURL) private var openURL
 
+    @ViewBuilder private var browserContent: some View {
+        if session.role == .player {
+            // The root hosts this web view so the same decoder stays attached across tab changes.
+            Color.clear.anchorPreference(key: PlayerViewportKey.self, value: .bounds) { PlayerViewport(page: $0) }
+        } else {
+            YouTubeWebView(session: session)
+        }
+    }
+
     var body: some View {
-        YouTubeWebView(session: session)
-            .ignoresSafeArea(.container, edges: extendsToBottom ? .bottom : [])
+        browserContent
+            .ignoresSafeArea(.container, edges: extendsToBottom && session.role != .player ? .bottom : [])
             .overlay(alignment: .top) {
-                if session.isLoading { ProgressView().padding(10).background(.regularMaterial, in: Capsule()).padding(.top, 8) }
+                if session.isLoading && session.role != .player { ProgressView().padding(10).background(.regularMaterial, in: Capsule()).padding(.top, 8) }
             }
             .overlay {
                 if let error = session.loadError {
@@ -68,6 +77,9 @@ struct BrowserPane: View {
                     .padding(.horizontal, 8).frame(minHeight: 64)
                     .background(Theme.card)
                     .overlay(alignment: .top) { Divider() }
+                    .anchorPreference(key: PlayerViewportKey.self, value: .bounds) {
+                        session.role == .player ? PlayerViewport(controls: $0) : PlayerViewport()
+                    }
                 }
             }
             .overlay(alignment: .bottom) {
@@ -93,10 +105,6 @@ struct BrowserPane: View {
                 }
             }
             .onDisappear { session.onSave = nil }
-            .onReceive(session.saveFeedback) { message in
-                feedbackID = UUID()
-                feedback = message
-            }
             .alert("iurub", isPresented: Binding(get: { session.notice != nil }, set: { if !$0 { session.notice = nil } })) {
                 Button("OK") { session.notice = nil }
             } message: { Text(session.notice ?? "") }
