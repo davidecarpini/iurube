@@ -13,6 +13,7 @@ struct MainView: View {
     @State private var selectedTab = 1
     @State private var showingSettings = false
     @State private var didStart = false
+    @State private var wasInBackground = false
     @State private var openingVideoToken = UUID()
     @State private var savedNeedsRefresh = false
     // Session-only hints come from the account UI, never the legacy local library.
@@ -90,7 +91,17 @@ struct MainView: View {
             else { sessions[tab].startIfNeeded() }
         }
         .onChange(of: showingSettings) { _, showing in if showing { pauseAll() } }
-        .onChange(of: scenePhase) { _, phase in if phase == .background { pauseAll() } else if phase == .inactive { player.captureProgress() } }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background {
+                wasInBackground = true
+                pauseAll()
+            } else if phase == .active, wasInBackground {
+                wasInBackground = false
+                if selectedTab == 0 { player.returnFromPictureInPicture() }
+            } else if phase == .inactive {
+                player.captureProgress()
+            }
+        }
         .onOpenURL { url in
             guard url.scheme == "iurub", url.host == "open",
                   let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "url" })?.value,

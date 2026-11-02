@@ -382,8 +382,20 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         }
     }
 
+    func returnFromPictureInPicture() {
+        guard isDetached, let id = currentVideo?.id else { return }
+        webView.closeAllMediaPresentations { [weak self] in
+            guard let self, self.currentVideo?.id == id else { return }
+            self.isDetached = false
+        }
+    }
+
     func togglePictureInPicture() {
         guard let id = currentVideo?.id, VideoLink.validID(id) else { return }
+        if isDetached {
+            returnFromPictureInPicture()
+            return
+        }
         #if os(iOS)
         // WebKit starts the audio session with the media; do not activate it just by opening the app.
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)

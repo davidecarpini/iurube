@@ -56,15 +56,20 @@ final class IurubUITests: XCTestCase {
         }
         let start = try seconds()
         XCUIDevice.shared.press(.home)
-        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 6))
+        let otherApp = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
+        otherApp.activate()
+        XCTAssertTrue(otherApp.wait(for: .runningForeground, timeout: 6))
         // Sample the actual media clock across a full interval outside the app.
         Thread.sleep(forTimeInterval: 5)
         app.activate()
-        XCTAssertGreaterThanOrEqual(try seconds() - start, 5, "Il video deve avanzare fuori dall’app")
+        let end = try seconds()
+        XCTContext.runActivity(named: "Video da " + String(start) + " a " + String(end) + " s passando a un’altra app") { _ in }
+        XCTAssertGreaterThanOrEqual(end - start, 5, "Il video deve avanzare fuori dall’app")
         XCTAssertTrue(pip.waitForExistence(timeout: 5))
-        if pip.label == "Riporta il video nell’app" { pip.tap() }
-        expectation(for: NSPredicate(format: "label == %@", "Picture in Picture"), evaluatedWith: pip)
-        waitForExpectations(timeout: 5)
+        let inline = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "Picture in Picture"), object: pip)
+        let restored = XCTWaiter.wait(for: [inline], timeout: 8)
+        if restored != .completed { capture("pip-return-diagnostic") }
+        XCTAssertEqual(restored, .completed, "Riaprendo In corso il video deve rientrare nel player")
     }
 
     func testModelChoicePersistsAndControlsAutomaticSummaryAndFollowUp() throws {
@@ -490,6 +495,43 @@ final class IurubLiveUITests: XCTestCase {
         capture("live-" + name, app: app)
         XCTAssertTrue(source.exists, "Provider did not return a successful summary")
         XCTAssertTrue(source.label.hasPrefix(name + " · "), "Show the model and actual charge")
+    }
+
+    func testSpeedOnPublicYouTubeVideo() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_PLAYBACK_LIVE"] == "1", "Requires public YouTube playback")
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--playback-live", "--start-video-at-8", "--pause-restored-video"]
+        app.launch()
+        let plus = app.buttons["speedUp"], rate = app.staticTexts["playbackSpeed"]
+        XCTAssertTrue(plus.waitForExistence(timeout: 20))
+        let play = app.webViews.buttons.matching(NSPredicate(format: "label == 'Riproduci' OR label == 'Play'")).firstMatch
+        _ = play.waitForExistence(timeout: 15)
+        let minus = app.buttons["speedDown"]
+        var original: Double?
+        for _ in 0..<3 {
+            if let value = rate.value as? String, let number = Double(value) { original = number; break }
+            if play.exists && play.isHittable { play.tap() }
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                (rate.value as? String).flatMap(Double.init) != nil
+            }, object: nil)
+            if XCTWaiter.wait(for: [ready], timeout: 8) == .completed {
+                original = (rate.value as? String).flatMap(Double.init); break
+            }
+        }
+        if original == nil { capture("youtube-player-not-ready", app: app) }
+        let initial = try XCTUnwrap(original, "YouTube deve aver caricato i metadati del video")
+        let increasing = plus.isEnabled
+        (increasing ? plus : minus).tap()
+        let changed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard let current = (rate.value as? String).flatMap(Double.init) else { return false }
+            return increasing ? current > initial : current < initial
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [changed], timeout: 8), .completed)
+        capture("youtube-player-speed", app: app)
+        (increasing ? minus : plus).tap()
+        expectation(for: NSPredicate(format: "value == %@", String(initial)), evaluatedWith: rate)
+        waitForExpectations(timeout: 8)
     }
 
     func testRealVideoCommentsRemainAccessible() throws {

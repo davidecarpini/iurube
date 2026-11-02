@@ -38,7 +38,7 @@ Il progresso viene registrato circa ogni cinque secondi durante la riproduzione,
 
 ## Finestra video e velocità
 
-Durante la riproduzione, tocca l’icona **Picture in Picture** accanto al segnalibro. Quando compare la finestra, puoi tornare alla schermata Home o aprire un’altra app. Per rientrare usa il comando della finestra di iOS. La chiusura forzata di iurub termina la riproduzione. Se il video o il dispositivo non consente Picture in Picture, il player lo segnala.
+Durante la riproduzione, tocca l’icona **Picture in Picture** accanto al segnalibro. Quando compare la finestra, puoi tornare alla schermata Home o aprire un’altra app. Riaprendo **In corso** dopo aver usato un’altra app, il video torna nel player. Puoi rientrare anche dal comando della finestra di iOS. La chiusura forzata di iurub termina la riproduzione. Se il video o il dispositivo non consente Picture in Picture, il player lo segnala.
 
 Usa **−** e **+** accanto alla velocità per passare da **0,5× a 2×** a passi di 0,25×. Il numero al centro mostra la velocità effettiva, anche se la cambi dal menu YouTube.
 
