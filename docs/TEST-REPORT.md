@@ -8,6 +8,8 @@ Il player conserva la stessa webview cambiando tab. Se la finestra di sistema è
 
 **Limite della prova Home.** Il simulatore non supporta la finestra PiP di sistema e WebKit vi ha sospeso il video pubblico quando un’altra app era in primo piano. Il test di continuità fuori dall’app è registrato come saltato. Le prove del comportamento durante l’ingresso in PiP coprono anche la sequenza pausa/finestra con eventi simulati. La continuità della nuova build sulla Home dell’iPhone resta da verificare in TestFlight.
 
+**TestFlight.** Apple ha ricevuto iurub 1.6.1 (10) il 2 novembre 2026 alle 16:59, ora italiana. La build 10 è disponibile per il gruppo interno **Internals**, con un invito. [Dettagli della build](https://appstoreconnect.apple.com/apps/6829671295/testflight/ios/0d8897fb-68ea-4646-a9f6-5b0ed8ea1daa). Archivio firmato `build/Distribution/iurub-1.6.1-10.xcarchive`, sorgenti `88ec1fd`. Il video pubblico in miniatura e la conferma di salvataggio ritardata sono stati riverificati con gli stessi sorgenti in `build/FloatingPlayer-161-signed-source.xcresult`.
+
 ---
 
 # iurub 1.6.0 · build 9
