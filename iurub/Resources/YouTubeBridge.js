@@ -20,6 +20,9 @@
   const reportedMembership = new Map();
   const observedWatchLaterCards = new WeakMap();
   let undoCandidate = null;
+  let pendingNotice = null;
+  let menuSource = null;
+  const mutedNotices = new Map();
   mergeMembership(initial);
   const CARD = [
     'ytm-video-with-context-renderer', 'ytm-video-renderer', 'ytm-compact-video-renderer',
@@ -72,6 +75,7 @@
     style.textContent = `
       ytm-pivot-bar-renderer, .pivot-bar-renderer { display:none !important; }
       ytm-app { padding-bottom:0 !important; }
+      [data-iurub-playlist-notice] { display:none !important; }
       html.iurub-watch-page [data-iurub-watch-recommendations] { display:none !important; }
       html.iurub-no-shorts ${SHORT_SHELF.split(',').join(',html.iurub-no-shorts ')} { display:none !important; }
       html.iurub-no-shorts a[href^="/shorts/"], html.iurub-no-shorts a[href*="youtube.com/shorts/"] { display:none !important; }
@@ -93,9 +97,10 @@
       .iurub-save:active::before, .iurub-remove:active::before { background:#ff3b3025; }
       .iurub-save:disabled, .iurub-remove:disabled { opacity:.45; }
       .iurub-save:focus-visible, .iurub-remove:focus-visible { outline:3px solid #e84a38; outline-offset:-3px; }
-      .iurub-save[data-saved="true"] { color:#396548; }
-      .iurub-save[data-saved="true"] svg { fill:currentColor; }
-      .iurub-save[data-saved="true"]::before { background:#487b4918; }
+      .iurub-save[data-saved="false"] { color:var(--yt-spec-text-primary,#272727); }
+      :is(.iurub-save,.iurub-remove)[data-saved="true"] { color:#c34230; }
+      :is(.iurub-save,.iurub-remove)[data-saved="true"] svg { fill:currentColor; }
+      :is(.iurub-save,.iurub-remove)::before { background:transparent; }
       .iurub-action-label { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
       .iurub-inline-details { display:flex !important; align-items:flex-start; }
       .iurub-inline-details > .media-item-metadata, .iurub-inline-details > .ytLockupMetadataViewModelTextContainer { flex:1 1 auto; min-width:0; }
@@ -104,7 +109,7 @@
       .iurub-compact-card { position:relative; }
       .iurub-compact-card > .iurub-save, .iurub-compact-card > .iurub-remove { position:absolute; right:4px; bottom:4px; }
       .iurub-compact-card > a > h3, .iurub-compact-card > h3, .iurub-compact-card > .byline { padding-inline-end:48px; }
-      @media(prefers-color-scheme:dark) { .iurub-save, .iurub-remove { color:#ff9487; } .iurub-save::before, .iurub-remove::before { background:#ff81751c; } .iurub-save[data-saved="true"] { color:#a4d2b1; } }
+      @media(prefers-color-scheme:dark) { .iurub-save, .iurub-remove { color:#ff9487; } .iurub-save::before, .iurub-remove::before { background:#ff81751c; } .iurub-save[data-saved="false"] { color:var(--yt-spec-text-primary,#f1f1f1); } :is(.iurub-save,.iurub-remove)[data-saved="true"] { color:#ff9487; } }
     `;
     (document.head || document.documentElement).appendChild(style);
   }
@@ -149,7 +154,7 @@
   function rememberMembership(video, saved) {
     if (!accountSaving || !video || !VIDEO_ID.test(video.id || '') || typeof saved !== 'boolean') return;
     accountMembership.set(video.id, saved);
-    document.querySelectorAll('.iurub-save').forEach(button => {
+    document.querySelectorAll('.iurub-save,.iurub-remove').forEach(button => {
       if (button.dataset.videoId === video.id) updateButton(button, video.id);
     });
     if (reportedMembership.get(video.id) !== saved) {
@@ -160,12 +165,69 @@
   function accountResult(status, video, saved) {
     post('youtubeSaveResult', {status, video, ...(typeof saved === 'boolean' ? {saved} : {})});
   }
-  const notifications = () => Array.from(document.querySelectorAll('[role="status"], [role="alert"], ytm-notification-text-renderer, tp-yt-paper-toast, yt-notification-action-renderer')).filter(visible);
+  const toastHost = 'ytm-notification-action-bottom-bar-renderer,ytm-notification-multi-action-renderer,ytm-notification-text-renderer,ytm-notification-action-renderer,yt-notification-action-renderer,ytd-notification-action-renderer,tp-yt-paper-toast,ytm-toast-renderer,yt-snackbar-view-model,.notification-action-response,.notification-action-bottom-bar';
+  const noticeSelector = toastHost + ',[role="status"],[role="alert"]';
+  const notifications = () => Array.from(document.querySelectorAll(noticeSelector)).filter(n =>
+    visible(n) || n.closest('[data-iurub-playlist-notice]'));
   const notificationSnapshot = () => new Map(notifications().map(n => [n, labelOf(n)]));
   const freshNotifications = before => notifications().filter(n => before.get(n) !== labelOf(n)).map(labelOf);
   const failureNotice = text => /\b(error|failed|unable|cannot|couldn.t|impossibile|errore|riprova)\b|not (?:added|saved|removed)|non (?:salvat|aggiunt|rimoss)/i.test(text);
   const savedNotice = text => watchLaterText.test(text) && /added|saved|aggiunt[oa]|salvat[oa]/i.test(text) && !failureNotice(text);
   const removedNotice = text => watchLaterText.test(text) && /removed|rimoss[oa]|rimozione/i.test(text) && !failureNotice(text);
+  // Some mobile layouts omit the list name in the confirmation for the selected WL action.
+  function confirmsPlaylistEdit(text, desired) {
+    if (failureNotice(text)) return false;
+    if (desired ? savedNotice(text) : removedNotice(text)) return true;
+    return desired ? /^(?:video )?(?:salvato|aggiunto alla playlist|saved|added to playlist)(?:[.! ]*(?:annulla|undo|visualizza|view))?[.! ]*$/i.test(text)
+      : /^(?:video )?(?:rimosso(?: dalla playlist)?|removed(?: from playlist)?)(?:[.! ]*(?:annulla|undo))?[.! ]*$/i.test(text);
+  }
+  function beginPlaylistEdit(desired) {
+    const before = notificationSnapshot();
+    pendingNotice = {desired, before, until:Date.now() + 5000};
+    return before;
+  }
+  function captureSitePlaylistAction(event) {
+    if (!accountSaving || savingToAccount || event.target.closest?.('.iurub-save,.iurub-remove')) return;
+    const control = event.target.closest?.(actionSelector + ',' + playlistChoiceSelector);
+    if (!control) return;
+    const card = control.closest(CARD);
+    const anchor = card && Array.from(card.querySelectorAll('a[href]')).find(a => parseLink(a.href));
+    const video = anchor && metadata(card, anchor, parseLink(anchor.href));
+    if (video) menuSource = {video, url:location.href, until:Date.now() + 20000};
+    const label = labelOf(control);
+    if (!watchLaterText.test(label) && !/^(?:save|salva)(?:$| (?:to|in|nella) .*playlist)/i.test(label)) return;
+    // A site's own Save command can select another list. Only an explicitly
+    // named Watch Later confirmation can change our bookmark or replace its toast.
+    const source = video || (menuSource?.url === location.href && Date.now() < menuSource.until ? menuSource.video : currentVideo());
+    pendingNotice = {siteAction:true, video:source, before:notificationSnapshot(), until:Date.now()+5000};
+  }
+  function updatePlaylistNotices() {
+    // YouTube may reuse the same node for errors and unrelated notifications.
+    for (const [node, text] of mutedNotices) {
+      if (!node.isConnected || text !== labelOf(node)) {
+        node.removeAttribute('data-iurub-playlist-notice');
+        mutedNotices.delete(node);
+      }
+    }
+    if (!pendingNotice) return;
+    if (Date.now() > pendingNotice.until) { pendingNotice = null; return; }
+    for (const node of notifications()) {
+      const text = labelOf(node);
+      if (pendingNotice.before.get(node) === text) continue;
+      if (pendingNotice.siteAction) {
+        const saved = savedNotice(text);
+        if (!saved && !removedNotice(text)) continue;
+        if (!pendingNotice.reported) {
+          pendingNotice.reported = true;
+          if (pendingNotice.video) rememberMembership(pendingNotice.video, saved);
+          accountResult(saved ? 'saved' : 'removed', pendingNotice.video, saved);
+        }
+      } else if (!confirmsPlaylistEdit(text, pendingNotice.desired)) continue;
+      const host = node.closest(toastHost) || node;
+      host.setAttribute('data-iurub-playlist-notice','');
+      mutedNotices.set(host, labelOf(host));
+    }
+  }
   const directWatchLater = () => menuRoots().flatMap(controls).find(n => watchLaterText.test(labelOf(n)) && /save|add|salva|aggiungi|remove|rimuovi/i.test(labelOf(n)));
   const directState = node => /remove|rimuovi/i.test(labelOf(node)) ? true : /save|add|salva|aggiungi/i.test(labelOf(node)) ? false : null;
   function dismissChooser() {
@@ -177,7 +239,7 @@
     return await until(() => {
       const notices = freshNotifications(before);
       if (notices.some(failureNotice)) return 'failed';
-      if (notices.some(desired ? savedNotice : removedNotice)) return 'confirmed';
+      if (notices.some(text => confirmsPlaylistEdit(text, desired))) return 'confirmed';
       if (allowUndo && notices.some(text => /^(?:action )?undone|^annullat[oa]|annullamento (?:riuscito|completato)/i.test(text))) return 'confirmed';
       // Wait for a changed control to settle; detached chooser state is not proof.
       if (Date.now() - started >= 250) {
@@ -208,7 +270,7 @@
       accountResult(desired ? 'alreadySaved' : 'alreadyRemoved', video, selected);
       dismissChooser(); return;
     }
-    const before = notificationSnapshot();
+    const before = beginPlaylistEdit(desired);
     checkbox.click();
     const confirm = menuRoots().flatMap(controls).find(n => /^(done|save|fine|salva)$/i.test(labelOf(n)));
     confirm?.click();
@@ -232,7 +294,7 @@
         accountResult(desired ? 'alreadySaved' : 'alreadyRemoved', video, selected);
         dismissChooser(); return;
       }
-      const before = notificationSnapshot();
+      const before = beginPlaylistEdit(desired);
       entry.direct.click();
       await finishAccountChange(video, desired, selected, before);
     } else if (entry.playlist) {
@@ -261,10 +323,10 @@
     } catch { accountResult('manual', video); }
     finally { savingToAccount = false; if (button) button.disabled = false; }
   }
-  function removeThroughYouTube(card, button) {
+  function togglePlaylistRow(card, button) {
     const anchor = Array.from(card.querySelectorAll('a[href]')).find(a => parseLink(a.href));
     const link = anchor && parseLink(anchor.href);
-    if (link) saveThroughYouTube(card, metadata(card, anchor, link), button, false);
+    if (link) saveThroughYouTube(card, metadata(card, anchor, link), button);
   }
   function observeAccountContext(event) {
     if (!accountSaving || event.target.closest?.('.iurub-save,.iurub-remove')) return;
@@ -283,7 +345,7 @@
   function observeUndo(event) {
     const control = event.target.closest?.('button,[role="button"]');
     if (!control || !/^(undo|annulla)$/i.test(labelOf(control)) || !undoCandidate || Date.now() > undoCandidate.expires) return;
-    if (!control.closest('[role="status"],[role="alert"],ytm-notification-text-renderer,tp-yt-paper-toast,yt-notification-action-renderer')) return;
+    if (!control.closest(noticeSelector)) return;
     const context = undoCandidate;
     const before = notificationSnapshot();
     undoCandidate = null;
@@ -292,23 +354,19 @@
       if (await transitionEvidence(before, context.saved, true) === 'confirmed') rememberMembership(context.video, context.saved);
     }, 0);
   }
-  const actionIcons = {
-    save: 'M7 3h10a1 1 0 0 1 1 1v17l-6-4-6 4V4a1 1 0 0 1 1-1Z',
-    remove: 'M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6M14 11v6'
-  };
-  function setActionIcon(button, action, label) {
+  function setBookmarkLabel(button, label) {
     if (!button.querySelector('svg')) {
       // DOM construction also works with YouTube's Trusted Types policy.
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       for (const [name, value] of Object.entries({viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'1.8','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'})) svg.setAttribute(name, value);
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', actionIcons[action]); svg.append(path);
+      path.setAttribute('d', 'M7 3h10a1 1 0 0 1 1 1v17l-6-4-6 4V4a1 1 0 0 1 1-1Z'); svg.append(path);
       const text = document.createElement('span'); text.className = 'iurub-action-label';
       button.append(svg, text);
     }
     const text = button.querySelector('.iurub-action-label');
     if (text.textContent !== label) text.textContent = label;
-    button.setAttribute('aria-label', label);
+    if (button.getAttribute('aria-label') !== label) button.setAttribute('aria-label', label);
     button.title = label;
   }
   function placeAction(card, button, removing) {
@@ -335,7 +393,7 @@
   function updateButton(button, id) {
     const saved = accountSaving ? accountMembership.get(id) === true : savedIDs.has(id);
     const label = saved ? (accountSaving ? 'Rimuovi da Guarda più tardi' : '✓ Salvato in Guarda più tardi') : '+ Guarda più tardi';
-    setActionIcon(button, 'save', label);
+    setBookmarkLabel(button, label);
     button.dataset.saved = String(saved);
     button.setAttribute('aria-pressed', String(saved));
   }
@@ -396,12 +454,13 @@
         if (!removeButton) {
           removeButton = document.createElement('button'); removeButton.type = 'button';
           removeButton.className = 'iurub-remove';
-          setActionIcon(removeButton, 'remove', 'Rimuovi da Guarda più tardi');
           removeButton.addEventListener('click', event => {
             event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
-            removeThroughYouTube(card, removeButton);
+            togglePlaylistRow(card, removeButton);
           });
         }
+        removeButton.dataset.videoId = link.id;
+        updateButton(removeButton, link.id);
         placeAction(card, removeButton, true);
         return;
       }
@@ -518,7 +577,7 @@
     if (next == null) return false;
     try { media.playbackRate = next; reportMediaControls(); return media.playbackRate === next; } catch { return false; }
   }
-  function togglePiP(id) {
+  function togglePiP(id, notifyFailure = true) {
     const media = mainVideo();
     if (!trackPlayback || parseLink(location.href)?.id !== id || !media || media.readyState < 2) return 'notReady';
     const active = detached(media);
@@ -533,7 +592,7 @@
     const failed = () => {
       if (parseLink(location.href)?.id !== id || mainVideo() !== media || detached(media) !== active) return;
       if (enteringPiP === request) enteringPiP = null;
-      post('pipFailed', {id, session:playbackSession});
+      if (notifyFailure) post('pipFailed', {id, session:playbackSession});
     };
     try {
       if (webkitAPI) media.webkitSetPresentationMode(active ? 'inline' : 'picture-in-picture');
@@ -550,6 +609,24 @@
   for (const event of ['loadedmetadata','emptied','ratechange','webkitpresentationmodechanged','enterpictureinpicture','leavepictureinpicture']) {
     document.addEventListener(event, reportMediaControls, true);
   }
+  function enterBackground(id) {
+    if (!trackPlayback || parseLink(location.href)?.id !== id) return;
+    reportPlayback(true);
+    const media = mainVideo();
+    if (!media || media.paused || media.ended || detached(media) || enteringPiP?.media === media) return;
+    // Ask WebKit for the system window if possible. Let the site's playing media
+    // continue as audio otherwise; never resume a paused or interrupted stream.
+    togglePiP(id, false);
+  }
+  if (trackPlayback) {
+    try { if (navigator.audioSession?.type === 'auto') navigator.audioSession.type = 'playback'; } catch {}
+  }
+  document.addEventListener('playing', event => {
+    const id = parseLink(location.href)?.id;
+    if (!trackPlayback || !id || event.target !== mainVideo()) return;
+    const media = event.target;
+    if ('autoPictureInPicture' in media && !media.disablePictureInPicture) media.autoPictureInPicture = true;
+  }, true);
   function pauseWhenHidden() {
     reportPlayback(true);
     const primary = mainVideo();
@@ -647,6 +724,7 @@
   }
   document.addEventListener('click', event => {
     const target = event.target;
+    captureSitePlaylistAction(event);
     observeUndo(event);
     observeAccountContext(event);
     const anchor = target.closest?.('a[href]');
@@ -689,6 +767,7 @@
     stepSpeed,
     togglePiP,
     pauseWhenHidden,
+    enterBackground,
     playbackSnapshot,
     restorePlayback,
     adoptPlayback,
@@ -702,6 +781,9 @@
   }
   if (initial.resume) restorePlayback(initial.resume);
   const observer = new MutationObserver(records => {
+    if (!window.document?.documentElement) return;
+    if (pendingNotice || mutedNotices.size) updatePlaylistNotices();
+    if (records.every(record => record.type === 'characterData')) return;
     for (const record of records) for (const node of record.removedNodes) {
       if (node.nodeType !== 1) continue;
       if (node.matches(CARD)) observedWatchLaterCards.delete(node);
@@ -709,7 +791,7 @@
     }
     scheduleScan();
   });
-  observer.observe(document, { childList:true, subtree:true, attributes:true, attributeFilter:['href'] });
+  observer.observe(document, { childList:true, characterData:true, subtree:true, attributes:true, attributeFilter:['href','aria-label'] });
   document.addEventListener('DOMContentLoaded', checkRoute, { once:true });
   checkRoute();
 })();

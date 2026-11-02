@@ -170,6 +170,37 @@ test('account button uses the YouTube menu and never writes the device library',
   } finally { dom.window.close(); }
 });
 
+test('only the Watch Later confirmation is hidden; a recycled error remains visible', async () => {
+  const {dom,d,w,messages} = await setup(fixture, 'https://m.youtube.com/', {saveDestination:'youtube'});
+  try {
+    d.querySelector('.iurub-save').click();
+    await wait(300);
+    const toast = d.querySelector('[role="status"]');
+    assert.equal(w.getComputedStyle(toast).display, 'none');
+    assert.equal(messages.filter(m => m.type === 'youtubeSaveResult' && m.status === 'saved').length, 1);
+    toast.textContent = 'Errore di connessione';
+    await wait();
+    assert.notEqual(w.getComputedStyle(toast).display, 'none');
+  } finally { dom.window.close(); }
+});
+
+test('a manual YouTube action shares only the confirmed Watch Later state with iurub', async () => {
+  const html='<button id="action">Salva in una playlist</button>';
+  const {dom,d,w,messages}=await setup(html,'https://m.youtube.com/watch?v=jfKfPfyJRdk',{saveDestination:'youtube'});
+  try {
+    d.getElementById('action').click();
+    const notice=d.createElement('div'); notice.setAttribute('role','status'); notice.textContent='Salvato in Preferiti'; d.body.append(notice);
+    await wait();
+    assert.notEqual(w.getComputedStyle(notice).display,'none');
+    assert.equal(messages.filter(m=>m.type==='youtubeSaveResult').length,0);
+    notice.textContent='Salvato in Guarda più tardi';
+    await wait();
+    assert.equal(w.getComputedStyle(notice).display,'none');
+    const changes=messages.filter(m=>m.type==='youtubeSaveResult');
+    assert.equal(changes.length,1); assert.equal(changes[0].video.id,'jfKfPfyJRdk'); assert.equal(changes[0].saved,true);
+  } finally {dom.window.close();}
+});
+
 test('an unknown existing membership is observed without accidentally removing the video', async () => {
   const { dom, d, w, messages } = await setup(fixture, 'https://m.youtube.com/', {saveDestination:'youtube'});
   try {
@@ -479,6 +510,30 @@ test('hidden player keeps only the detached media playing and resumes normal pau
     assert.equal(w.playbackState.pauses, 1);
     assert.equal(otherPauses, 3);
   } finally { dom.window.close(); }
+});
+
+test('leaving the app requests PiP only for the playing video and leaves background audio alone', async () => {
+  const {dom,d,w,messages} = await playbackSetup();
+  try {
+    const video=d.querySelector('video'), id='jfKfPfyJRdk';
+    let paused=true, requests=0;
+    Object.defineProperty(video, 'paused', {get:()=>paused});
+    video.webkitSupportsPresentationMode = () => true;
+    video.webkitSetPresentationMode = () => { requests++; };
+    w.iurub.enterBackground(id);
+    paused=false;
+    w.iurub.enterBackground('M7lc1UVf-VE');
+    assert.equal(requests, 0);
+    video.disablePictureInPicture=true;
+    w.iurub.enterBackground(id);
+    assert.equal(requests, 0);
+    video.disablePictureInPicture=false;
+    w.iurub.enterBackground(id);
+    w.iurub.enterBackground(id);
+    assert.equal(requests, 1);
+    assert.equal(w.playbackState.pauses, 0);
+    assert.equal(messages.some(m=>m.type==='pipFailed'),false);
+  } finally {dom.window.close();}
 });
 
 test('media controls respect site restrictions, the current video, and changes from the site player', async () => {

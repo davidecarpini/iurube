@@ -29,6 +29,7 @@ final class IurubUITests: XCTestCase {
         XCTAssertTrue(plus.waitForExistence(timeout: 5))
         plus.tap()
         XCTAssertTrue(app.webViews.staticTexts["Velocità effettiva 1.25"].waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(app.staticTexts["playbackSpeed"].frame.width, 30, "Il valore completo deve restare leggibile nella riga")
         capture("player-controls")
         for _ in 0..<3 { plus.tap() }
         XCTAssertTrue(app.webViews.staticTexts["Velocità effettiva 2"].waitForExistence(timeout: 5))
@@ -70,6 +71,41 @@ final class IurubUITests: XCTestCase {
         let restored = XCTWaiter.wait(for: [inline], timeout: 8)
         if restored != .completed { capture("pip-return-diagnostic") }
         XCTAssertEqual(restored, .completed, "Riaprendo In corso il video deve rientrare nel player")
+    }
+
+    func testInlineVideoContinuesOrResumesAtCheckpointOnReturn() throws {
+        try openPlayableClip()
+        let clock = app.webViews.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Secondi '")).firstMatch
+        func seconds() throws -> Int {
+            try XCTUnwrap(Int(clock.label.replacingOccurrences(of: "Secondi ", with: "")))
+        }
+        let playing = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in (try? seconds()) ?? 0 >= 1 }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [playing], timeout: 8), .completed)
+        let events = app.webViews.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Media '")).firstMatch
+        let initialEvents = events.label
+        let start = try seconds()
+        XCUIDevice.shared.press(.home)
+        let other = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
+        other.activate()
+        XCTAssertTrue(other.wait(for: .runningForeground, timeout: 5))
+        Thread.sleep(forTimeInterval: 6)
+        app.activate()
+        let end = try seconds()
+        XCTContext.runActivity(named: initialEvents + " → " + events.label) { _ in }
+        XCTContext.runActivity(named: "Riproduzione in background da " + String(start) + " a " + String(end) + " secondi") { _ in }
+        if end - start < 6 && !AVPictureInPictureController.isPictureInPictureSupported() {
+            // WebKit may suspend inline video on simulators without a system PiP window.
+            // Verify the checkpoint and actual subsequent playback in this case.
+            let resumed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                (try? seconds()) ?? 0 >= start + 2
+            }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [resumed], timeout: 5), .completed)
+            let visibleEvent = try XCTUnwrap(events.label.split(separator: " ").last { $0.hasPrefix("visible@") })
+            let restoredPosition = try XCTUnwrap(Double(visibleEvent.dropFirst("visible@".count)))
+            XCTAssertGreaterThanOrEqual(restoredPosition, Double(start) - 0.5)
+        } else {
+            XCTAssertGreaterThanOrEqual(end - start, 6)
+        }
     }
 
     func testModelChoicePersistsAndControlsAutomaticSummaryAndFollowUp() throws {
@@ -124,7 +160,9 @@ final class IurubUITests: XCTestCase {
         let save = webBookmark("+ Guarda più tardi")
         XCTAssertTrue(save.waitForExistence(timeout: 10))
         save.tap()
-        XCTAssertTrue(app.staticTexts["Salvato in Guarda più tardi su YouTube"].waitForExistence(timeout: 5))
+        let toast = app.staticTexts["webSaveFeedback"]
+        XCTAssertTrue(toast.waitForExistence(timeout: 5))
+        XCTAssertEqual(toast.label, "Salvato")
         app.tabBars.buttons["Salvati"].tap()
         XCTAssertTrue(app.webViews.staticTexts["Musica per concentrarsi"].waitForExistence(timeout: 10))
         capture("account-watch-later")
@@ -132,14 +170,18 @@ final class IurubUITests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--fixture"]
         app.launch()
         XCTAssertTrue(app.webViews.staticTexts["Musica per concentrarsi"].waitForExistence(timeout: 10))
-        let remove = app.webViews.buttons.matching(identifier: "Rimuovi da Guarda più tardi").element(boundBy: 1)
+        let remove = app.webViews.descendants(matching: .any).matching(identifier: "Rimuovi da Guarda più tardi").element(boundBy: 1)
         XCTAssertTrue(remove.waitForExistence(timeout: 5))
         remove.tap()
-        XCTAssertTrue(app.webViews.buttons["Annulla"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["webSaveFeedback"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["webSaveFeedback"].label, "Rimosso")
+        XCTAssertFalse(app.webViews.buttons["Annulla"].exists)
         XCTAssertFalse(app.webViews.staticTexts["Musica per concentrarsi"].exists)
         XCTAssertTrue(app.webViews.staticTexts["Video già salvato nell’account"].exists)
-        app.webViews.buttons["Annulla"].tap()
-        XCTAssertTrue(app.webViews.staticTexts["Musica per concentrarsi"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["In corso"].tap()
+        app.tabBars.buttons["Salvati"].tap()
+        XCTAssertTrue(app.webViews.staticTexts["Video già salvato nell’account"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.webViews.staticTexts["Musica per concentrarsi"].exists)
         app.buttons["settingsButton"].tap()
         XCTAssertTrue(app.switches["shortsToggle"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["Account YouTube"].exists)
@@ -159,7 +201,9 @@ final class IurubUITests: XCTestCase {
         capture("account-bookmark-filled")
         filledBookmark.tap()
         XCTAssertTrue(emptyBookmark.waitForExistence(timeout: 10), "Tapping the filled bookmark must remove membership")
-        XCTAssertTrue(app.webViews.buttons["Annulla"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["webSaveFeedback"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["webSaveFeedback"].label, "Rimosso")
+        XCTAssertFalse(app.webViews.buttons["Annulla"].exists)
         app.tabBars.buttons["Salvati"].tap()
         XCTAssertTrue(app.webViews.staticTexts["Video già salvato nell’account"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.webViews.staticTexts["Musica per concentrarsi"].exists)
@@ -182,10 +226,17 @@ final class IurubUITests: XCTestCase {
         let saved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "salvato"), object: bookmark)
         XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 10), .completed)
         XCTAssertEqual(bookmark.label, "Rimuovi da Guarda più tardi")
+        app.tabBars.buttons["Salvati"].tap()
+        XCTAssertTrue(app.webViews.staticTexts["Musica per concentrarsi"].waitForExistence(timeout: 10))
+        app.tabBars.buttons["In corso"].tap()
         bookmark.tap()
         let removed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "non salvato"), object: bookmark)
         XCTAssertEqual(XCTWaiter.wait(for: [removed], timeout: 10), .completed)
         XCTAssertEqual(bookmark.label, "Guarda più tardi")
+        app.tabBars.buttons["Salvati"].tap()
+        XCTAssertTrue(app.webViews.staticTexts["Video già salvato nell’account"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.webViews.staticTexts["Musica per concentrarsi"].exists)
+        app.tabBars.buttons["In corso"].tap()
         let comments = app.webViews.buttons["Commenti"]
         XCTAssertTrue(comments.waitForExistence(timeout: 10))
         let recommendations = app.webViews.staticTexts["Video suggerito da nascondere"]
@@ -495,6 +546,45 @@ final class IurubLiveUITests: XCTestCase {
         capture("live-" + name, app: app)
         XCTAssertTrue(source.exists, "Provider did not return a successful summary")
         XCTAssertTrue(source.label.hasPrefix(name + " · "), "Show the model and actual charge")
+    }
+
+    func testBackgroundOnPublicYouTubeVideo() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_PLAYBACK_LIVE"] == "1", "Requires public YouTube playback")
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--playback-live"]
+        app.launch()
+        app.open(try XCTUnwrap(URL(string: "iurub://open?url=https%3A%2F%2Fm.youtube.com%2Fwatch%3Fv%3Daqz-KE-bpKQ%26t%3D30s")))
+        func position() -> Double? {
+            let status = app.staticTexts["livePlaybackStatus"]
+            guard status.exists, let data = status.label.data(using: .utf8),
+                  let record = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let video = record["video"] as? [String: Any], video["id"] as? String == "aqz-KE-bpKQ",
+                  let duration = record["duration"] as? Double, duration > 90 else { return nil }
+            return record["position"] as? Double
+        }
+        let play = app.webViews.buttons.matching(NSPredicate(format: "label == 'Riproduci' OR label == 'Play'")).firstMatch
+        if play.waitForExistence(timeout: 15), play.isHittable { play.tap() }
+        for _ in 0..<3 {
+            let moving = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in (position() ?? 0) >= 34 }, object: nil)
+            if XCTWaiter.wait(for: [moving], timeout: 8) == .completed { break }
+            if play.exists && play.isHittable { play.tap() }
+        }
+        let start = try XCTUnwrap(position())
+        XCTAssertGreaterThanOrEqual(start, 34, "Il sito deve confermare che il video è in riproduzione")
+        XCUIDevice.shared.press(.home)
+        let other = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
+        other.activate()
+        XCTAssertTrue(other.wait(for: .runningForeground, timeout: 6))
+        Thread.sleep(forTimeInterval: 10)
+        app.activate()
+        let end = try XCTUnwrap(position())
+        XCTContext.runActivity(named: "Video YouTube da " + String(start) + " a " + String(end) + " secondi") { _ in }
+        if end - start < 9 && !AVPictureInPictureController.isPictureInPictureSupported() {
+            XCTAssertGreaterThanOrEqual(end, start - 1, "Il sito deve conservare il punto di visione")
+            throw XCTSkip("WebKit ha sospeso il video YouTube sul simulatore privo di Picture in Picture.")
+        }
+        XCTAssertGreaterThanOrEqual(end - start, 9, "Il video deve continuare con un’altra app in primo piano")
     }
 
     func testSpeedOnPublicYouTubeVideo() throws {

@@ -1,6 +1,6 @@
 # iurub
 
-Versione **1.5.0**. Client personale per iPhone, SwiftUI + WKWebView, iOS 17+. Nessun backend da configurare. I riassunti usano Gemini tramite la tua chiave OpenRouter, custodita nel Portachiavi.
+Versione **1.6.0**. Client personale per iPhone, SwiftUI + WKWebView, iOS 17+. Nessun backend da configurare. I riassunti usano Gemini tramite la tua chiave OpenRouter, custodita nel Portachiavi.
 
 ## Navigazione
 
@@ -18,11 +18,11 @@ La barra inferiore del sito (Home, Iscrizioni, Tu) è nascosta. La webview si es
 
 Un secondo tocco sulla tab già selezionata riporta alla pagina iniziale della sezione. Su **In corso** torna al video attivo senza azzerarne la posizione.
 
-Aprendo un video da una delle altre sezioni, iurub passa automaticamente a **In corso**. Le pagine di provenienza restano separate dal player: tornando dal video ritrovi la pagina e lo scorrimento precedenti. Se hai salvato il video dal player, **Salvati** viene aggiornato al ritorno per mostrare la modifica alla playlist.
+Aprendo un video da una delle altre sezioni, iurub passa automaticamente a **In corso**. Le pagine di provenienza restano separate dal player: tornando dal video ritrovi la pagina e lo scorrimento precedenti. Aprendo **Salvati**, iurub rilegge la playlist di YouTube e mostra le aggiunte e le rimozioni.
 
 Il segnalibro diventa pieno quando iurub verifica che il video è in Guarda più tardi. Toccandolo di nuovo rimuovi il video dalla playlist; lo stato viene condiviso tra le tab e con il player. Iurub usa i controlli e le conferme di YouTube: un comando non confermato non viene mostrato come riuscito. La lista Salvati viene letta anche quando all’avvio si riprende un video.
 
-Salvati mostra direttamente la lista, senza la grande copertina della playlist. Ogni video ha un piccolo **cestino** nella colonna delle azioni, senza aggiungere spazio tra le righe. La rimozione viene eseguita da YouTube; il suo comando **Annulla**, quando disponibile, rimane utilizzabile. Nelle impostazioni puoi abilitare gli Shorts, nascosti inizialmente, per tutte le sezioni.
+In **Salvati** ogni riga ha un segnalibro pieno che puoi toccare per rimuovere il video. Una modifica confermata mostra un solo messaggio, **Salvato** o **Rimosso**. Nelle impostazioni puoi abilitare gli Shorts, nascosti inizialmente, per tutte le sezioni.
 
 Tutte le sezioni condividono lo stesso archivio WebKit di cookie e sessione. Accedendo a YouTube nell’app, anche le altre pagine usano quell’account. Le modifiche alla playlist compaiono sugli altri dispositivi collegati allo stesso account. Se non hai effettuato l’accesso, YouTube mostra la sua schermata di login.
 
@@ -38,7 +38,7 @@ Il progresso viene registrato circa ogni cinque secondi durante la riproduzione,
 
 ## Finestra video e velocità
 
-Durante la riproduzione, tocca l’icona **Picture in Picture** accanto al segnalibro. Quando compare la finestra, puoi tornare alla schermata Home o aprire un’altra app. Riaprendo **In corso** dopo aver usato un’altra app, il video torna nel player. Puoi rientrare anche dal comando della finestra di iOS. La chiusura forzata di iurub termina la riproduzione. Se il video o il dispositivo non consente Picture in Picture, il player lo segnala.
+La barra **In linea** tiene sempre a portata di mano **Salva**, **Finestra**, i controlli di velocità e **Riassunto**. Se passi alla Home o apri un’altra app mentre guardi il video, iurub chiede la finestra di sistema dove disponibile e lascia proseguire la riproduzione audio quando WebKit e YouTube lo consentono. Puoi anche aprire la finestra manualmente. Rientrando in **In corso** il video torna nel player. Una chiusura forzata termina la riproduzione.
 
 Usa **−** e **+** accanto alla velocità per passare da **0,5× a 2×** a passi di 0,25×. Il numero al centro mostra la velocità effettiva, anche se la cambi dal menu YouTube.
 
@@ -76,7 +76,7 @@ TEST_RUNNER_IURUB_SUMMARY_LIVE=1 ./scripts/simulator.sh live
 TEST_RUNNER_IURUB_LAYOUT_LIVE=1 ./scripts/simulator.sh live
 ```
 
-La suite ripetibile usa fixture, una lista locale di prova e un archivio WebKit non persistente: non legge né modifica l’account Google reale. Simula una playlist già popolata, salvataggio nel conto di prova, riavvio, rimozione, annullamento, toggle Shorts e le cinque tab. Verifica anche ordine e posizione dei controlli, refresh, ritorno alla radice al secondo tocco, dimensioni della webview e chat con risposte simulate (persistenza, domanda, errore e retry). La fixture del player copre ripresa tra tab e riavvii, posizioni distinte per video e comportamento dopo il completamento.
+La suite ripetibile usa fixture, una lista locale di prova e un archivio WebKit non persistente: non legge né modifica l’account Google reale. Simula una playlist già popolata, salvataggio nel conto di prova, riavvio, rimozione, aggiornamento al rientro in Salvati, toggle Shorts e le cinque tab. Verifica anche ordine e posizione dei controlli, refresh, ritorno alla radice al secondo tocco, dimensioni della webview e chat con risposte simulate (persistenza, domanda, errore e retry). La fixture del player copre ripresa tra tab e riavvii, posizioni distinte per video e comportamento dopo il completamento.
 
 Il comando `live` richiede una sessione YouTube già autenticata. È una verifica in sola lettura della playlist, della presenza dei controlli, delle sezioni YouTube e del percorso Tu → Indietro; non cancella o aggiunge video reali. I risultati e le immagini sono allegati ai file `build/*.xcresult`. Il rapporto riporta separatamente gli esiti delle fixture, del sito reale e delle richieste Gemini.
 

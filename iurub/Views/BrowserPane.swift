@@ -11,6 +11,7 @@ struct BrowserPane: View {
     var extendsToBottom = false
     var onSave: ((SavedVideo) -> Void)? = nil
     @State private var feedback: String?
+    @State private var feedbackID = UUID()
     @State private var safariURL: IdentifiedURL?
     @State private var summaryVideo: SavedVideo?
     @Environment(\.openURL) private var openURL
@@ -35,10 +36,10 @@ struct BrowserPane: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if let video = session.currentVideo {
                     let saved = session.saveDestination == .youtube ? session.youtubeSavedIDs.contains(video.id) : library.contains(video.id)
-                    HStack(spacing: 2) {
+                    HStack(spacing: 0) {
                         Button(action: session.saveCurrent) {
-                            Image(systemName: saved ? "bookmark.fill" : "bookmark")
-                                .font(.headline).frame(width: 44, height: 44)
+                            controlLabel(saved ? "Salvato" : "Salva", symbol: saved ? "bookmark.fill" : "bookmark",
+                                         color: saved ? Theme.accent : .primary)
                         }
                         .disabled(session.saveDestination == .device && saved)
                         .accessibilityLabel(session.saveDestination == .youtube ? (saved ? "Rimuovi da Guarda più tardi" : "Guarda più tardi") : (saved ? "Salvato sul dispositivo" : "Salva sul dispositivo"))
@@ -46,11 +47,9 @@ struct BrowserPane: View {
                         .accessibilityIdentifier("saveCurrentVideo")
                         if session.role == .player {
                             Button(action: session.togglePictureInPicture) {
-                                Image(systemName: session.isDetached ? "pip.exit" : "pip.enter")
-                                    .frame(width: 44, height: 44)
+                                controlLabel("Finestra", symbol: session.isDetached ? "pip.exit" : "pip.enter")
                             }
                             .accessibilityLabel(session.isDetached ? "Riporta il video nell’app" : "Picture in Picture")
-                            .accessibilityHint("Guarda il video mentre usi altre app")
                             .accessibilityIdentifier("pictureInPicture")
                             speedControls
                         }
@@ -58,32 +57,25 @@ struct BrowserPane: View {
                             session.pause()
                             summaryVideo = video
                         } label: {
-                            HStack(spacing: 8) {
-                                if summaries.busy.contains(video.id) || summaries.queued.contains(video.id) {
-                                    ProgressView().controlSize(.small)
-                                } else { Image(systemName: "sparkles") }
-                                ViewThatFits(in: .horizontal) {
-                                    Text("Riassunto").fixedSize()
-                                    Color.clear.frame(width: 0, height: 1)
-                                }
-                            }
-                            .font(.subheadline.weight(.semibold))
-                            .frame(maxWidth: .infinity).frame(minHeight: 44)
-                            .background(Theme.accent.opacity(0.1), in: Capsule())
+                            controlLabel("Riassunto", symbol: "sparkles", color: Theme.accent,
+                                         busy: summaries.busy.contains(video.id) || summaries.queued.contains(video.id))
                         }
                         .accessibilityLabel("Riassunto")
                         .accessibilityIdentifier("summaryButton")
                         .accessibilityValue(summaries.busy.contains(video.id) ? "In preparazione" : (summaries.queued.contains(video.id) ? "In attesa" : ((summaries.conversations[video.id] ?? []).isEmpty ? "Da preparare" : "Pronto")))
                     }
-                    .padding(.horizontal, 8).padding(.vertical, 6)
-                    .background(.regularMaterial)
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 8).frame(minHeight: 64)
+                    .background(Theme.card)
+                    .overlay(alignment: .top) { Divider() }
                 }
             }
             .overlay(alignment: .bottom) {
                 if let feedback {
                     Text(feedback).font(.subheadline.weight(.medium)).padding(14)
                         .background(.regularMaterial, in: Capsule()).padding(.bottom, 64)
-                        .task(id: feedback) {
+                        .allowsHitTesting(false)
+                        .task(id: feedbackID) {
                             try? await Task.sleep(for: .seconds(3))
                             if !Task.isCancelled { self.feedback = nil }
                         }
@@ -93,14 +85,18 @@ struct BrowserPane: View {
             .onAppear {
                 session.onSave = { video in
                     onSave?(video)
+                    feedbackID = UUID()
                     feedback = library.contains(video.id) ? "Salvato sul dispositivo" : (library.errorMessage ?? "Salvataggio non riuscito")
                     if session.saveDestination == .device {
                         session.configure(shortsEnabled: settings.shortsEnabled, savedIDs: library.videos.map(\.id))
                     }
                 }
             }
-            .onDisappear { session.pauseWhenHidden(); session.onSave = nil }
-            .onReceive(session.$saveFeedback) { if let message = $0 { feedback = message } }
+            .onDisappear { session.onSave = nil }
+            .onReceive(session.saveFeedback) { message in
+                feedbackID = UUID()
+                feedback = message
+            }
             .alert("iurub", isPresented: Binding(get: { session.notice != nil }, set: { if !$0 { session.notice = nil } })) {
                 Button("OK") { session.notice = nil }
             } message: { Text(session.notice ?? "") }
@@ -123,26 +119,49 @@ struct BrowserPane: View {
             .sheet(item: $safariURL) { item in SafariView(url: item.url).ignoresSafeArea() }
             #endif
     }
-    private var speedControls: some View {
-        HStack(spacing: 0) {
-            Button { session.stepSpeed(-1) } label: {
-                Image(systemName: "minus").frame(width: 44, height: 44)
+    private func controlLabel(_ title: String, symbol: String, color: Color = .primary, busy: Bool = false) -> some View {
+        VStack(spacing: 3) {
+            Group {
+                if busy { ProgressView().controlSize(.small) }
+                else { Image(systemName: symbol).font(.system(size: 20, weight: .medium)) }
             }
-            .disabled((session.mediaRate ?? 0.5) <= 0.5)
-            .accessibilityLabel("Riduci velocità").accessibilityIdentifier("speedDown")
-            Text(session.mediaRate.map { $0.formatted(.number.precision(.fractionLength(0...2))) + "×" } ?? "–")
-                .font(.subheadline.weight(.semibold).monospacedDigit())
-                .foregroundStyle(.primary).lineLimit(1).minimumScaleFactor(0.7)
-                .accessibilityLabel("Velocità di riproduzione")
-                .accessibilityValue(session.mediaRate.map { String($0) } ?? "")
-                .accessibilityIdentifier("playbackSpeed")
-            Button { session.stepSpeed(1) } label: {
-                Image(systemName: "plus").frame(width: 44, height: 44)
-            }
-            .disabled((session.mediaRate ?? 2) >= 2)
-            .accessibilityLabel("Aumenta velocità").accessibilityIdentifier("speedUp")
+            .frame(height: 24)
+            Text(title).font(.caption2.weight(.medium)).lineLimit(1)
         }
-        .background(.quaternary, in: Capsule())
+        .foregroundStyle(color)
+        .frame(minWidth: 44, maxWidth: .infinity, minHeight: 52)
+        .contentShape(Rectangle())
+    }
+
+    private var speedControls: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                speedButton(-1)
+                Text(session.mediaRate.map { $0.formatted(.number.precision(.fractionLength(0...2))) + "×" } ?? "–")
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
+                    .fixedSize(horizontal: true, vertical: false)
+                    .accessibilityLabel("Velocità di riproduzione")
+                    .accessibilityValue(session.mediaRate.map { String($0) } ?? "")
+                    .accessibilityIdentifier("playbackSpeed")
+                speedButton(1)
+            }
+            Text("Velocità").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+        }
+        .foregroundStyle(.primary)
+        .fixedSize(horizontal: true, vertical: false)
+        .layoutPriority(1)
+    }
+
+    private func speedButton(_ direction: Int) -> some View {
+        let increase = direction > 0
+        return Button { session.stepSpeed(direction) } label: {
+            Image(systemName: increase ? "plus" : "minus").font(.system(size: 18, weight: .medium))
+                .frame(width: 44, height: 44).contentShape(Rectangle())
+        }
+        .disabled(session.mediaRate.map { increase ? $0 >= 2 : $0 <= 0.5 } ?? true)
+        .accessibilityLabel(increase ? "Aumenta velocità" : "Riduci velocità")
+        .accessibilityIdentifier(increase ? "speedUp" : "speedDown")
     }
 }
 

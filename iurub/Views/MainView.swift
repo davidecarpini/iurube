@@ -13,9 +13,8 @@ struct MainView: View {
     @State private var selectedTab = 1
     @State private var showingSettings = false
     @State private var didStart = false
-    @State private var wasInBackground = false
+    @State private var preparingBackgroundPlayer = false
     @State private var openingVideoToken = UUID()
-    @State private var savedNeedsRefresh = false
     // Session-only hints come from the account UI, never the legacy local library.
     // Missing IDs in a partially loaded playlist do not mean "not saved".
     @State private var youtubeMembership: [String: Bool] = [:]
@@ -76,29 +75,34 @@ struct MainView: View {
             if accountContextNeedsRefresh {
                 accountContextNeedsRefresh = false
                 resetMembershipHints()
-                watchLater.openStartPage()
-                savedNeedsRefresh = false
+                if tab != 1 { watchLater.openStartPage() }
             }
             if old == 0 { player.captureProgress() }
             for (index, session) in sessions.enumerated() where index != tab { session.pauseWhenHidden() }
             if tab == 0 { ensurePlayer() }
-            else if tab == 1 && savedNeedsRefresh {
-                savedNeedsRefresh = false
-                watchLater.openStartPage()
-            }
-            else if old == 0 { sessions[tab].startIfNeeded() }
-            else if tab == 1 || tab == 3 { sessions[tab].openStartPage() }
+            else if tab == 1 { watchLater.openStartPage() }
+            else if tab == 3 && old != 0 { history.openStartPage() }
             else { sessions[tab].startIfNeeded() }
         }
         .onChange(of: showingSettings) { _, showing in if showing { pauseAll() } }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .background {
-                wasInBackground = true
-                pauseAll()
-            } else if phase == .active, wasInBackground {
-                wasInBackground = false
+            if phase == .inactive {
+                player.captureProgress()
+                if selectedTab == 0 && !showingSettings && !player.isDetached {
+                    preparingBackgroundPlayer = true
+                    player.prepareBackgroundPlayback()
+                }
+            } else if phase == .background {
+                if selectedTab == 0 && !showingSettings {
+                    preparingBackgroundPlayer = true
+                    player.prepareBackgroundPlayback()
+                } else {
+                    player.pauseWhenHidden()
+                }
+                for session in sessions where session !== player { session.pauseWhenHidden() }
+            } else if phase == .active && preparingBackgroundPlayer {
+                preparingBackgroundPlayer = false
                 if selectedTab == 0 { player.returnFromPictureInPicture() }
-            } else if phase == .inactive {
                 player.captureProgress()
             }
         }
@@ -183,7 +187,10 @@ struct MainView: View {
             session.onYouTubeMembership = { video, saved in
                 guard !accountContextNeedsRefresh, youtubeMembership[video.id] != saved else { return }
                 youtubeMembership[video.id] = saved
-                if session !== watchLater { savedNeedsRefresh = true }
+            }
+            session.onPlaylistEdit = {
+                // A confirmation can arrive after the user has already returned to Salvati.
+                if selectedTab == 1 && session !== watchLater { watchLater.openStartPage() }
             }
             session.onYouTubeSaved = { video in
                 guard settings.automaticSummariesEnabled else { return }
@@ -274,8 +281,7 @@ struct MainView: View {
         if accountContextNeedsRefresh {
             accountContextNeedsRefresh = false
             resetMembershipHints()
-            watchLater.openStartPage()
-            savedNeedsRefresh = false
+            if tab != 1 { watchLater.openStartPage() }
         }
         if tab != 0 { openingVideoToken = UUID() }
         if selectedTab == tab {
@@ -284,7 +290,6 @@ struct MainView: View {
                 ensurePlayer()
             } else {
                 pauseAll()
-                if tab == 1 { savedNeedsRefresh = false }
                 sessions[tab].openStartPage()
             }
         } else {

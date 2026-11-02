@@ -1,3 +1,15 @@
+# iurub 1.6.0 · build 9
+
+La barra del player riprende la proposta [In linea in Figma](https://www.figma.com/design/Z5jYRiRSVP4Gt8CERP4nFi/Untitled?node-id=7-422). Salva, Finestra, i pulsanti − e + con il valore della velocità e Riassunto sono accessibili con un tocco. Il segnalibro diventa pieno dopo la conferma del salvataggio e torna vuoto dopo la rimozione. In **Salvati** iurub ricarica la playlist a ogni ingresso. Se una modifica si conclude dopo il cambio di tab, iurub aggiorna la lista già aperta.
+
+Le notifiche di conferma della playlist vengono sostituite da un solo messaggio nativo, **Salvato** o **Rimosso**. Le altre notifiche e gli errori del sito restano disponibili.
+
+**Riproduzione fuori dall’app.** Quando il player in primo piano perde il focus, iurub chiede a WebKit di aprire Picture in Picture per il video già in riproduzione e conserva il punto di visione. L’apertura dipende dalle capacità del dispositivo e del sito. Nel simulatore iPhone Air, che non offre la finestra di sistema, sia la clip con traccia audio sia il video YouTube pubblico hanno subito una sospensione durante il cambio di app. La clip ha mantenuto la posizione e ha ripreso a scorrere al rientro. La continuità automatica in una finestra di sistema resta da verificare in TestFlight.
+
+**Verifiche.** Superati 54 test JavaScript e 48 test Swift. Sul simulatore sono inoltre passati sei test di interfaccia distinti, inclusa la prova della velocità sul video YouTube reale. Il test della riproduzione continua di YouTube è stato registrato come saltato dopo aver misurato la sospensione sul simulatore senza PiP. I cambi alla playlist sono stati provati con un account simulato. La larghezza del valore «1,25×», i limiti della velocità e la ripresa della clip sono stati riverificati sulla versione definitiva. Esiti in `build/InlinePlayer-Final-160.xcresult` e `build/InlinePlayer-Release-160.xcresult`.
+
+---
+
 # iurub 1.5.0 · build 8
 
 2 novembre 2026. Nella barra di **In corso**, il pulsante Picture in Picture apre la finestra di sistema durante la riproduzione. I pulsanti **−** e **+** regolano la velocità da 0,5× a 2× a passi di 0,25×. L’indicatore legge la velocità effettiva del player.

@@ -35,7 +35,8 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     @Published private(set) var loadError: String?
     @Published var notice: String?
     @Published var externalURL: URL?
-    @Published private(set) var saveFeedback: String?
+    let saveFeedback = PassthroughSubject<String, Never>()
+    var onPlaylistEdit: (() -> Void)?
     @Published private(set) var youtubeSavedIDs: Set<String> = []
     @Published private(set) var youtubeRemovedIDs: Set<String> = []
     private(set) var webView: WKWebView!
@@ -82,6 +83,10 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         if ProcessInfo.processInfo.arguments.contains("--fixture") { config.websiteDataStore = .nonPersistent() }
         #endif
         #if os(iOS)
+        if role == .player {
+            // Configure the category without taking audio focus until WebKit plays media.
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        }
         config.allowsInlineMediaPlayback = true
         config.allowsPictureInPictureMediaPlayback = true
         config.allowsAirPlayForMediaPlayback = true
@@ -363,7 +368,12 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         webView.evaluateJavaScript("window.iurub?.pause();", completionHandler: nil)
     }
 
-    /// A tab switch or a trip to the Home Screen must not pause the system PiP window.
+    func prepareBackgroundPlayback() {
+        guard role == .player, let id = currentVideo?.id, VideoLink.validID(id) else { return }
+        webView.evaluateJavaScript("window.iurub?.enterBackground('\(id)');", completionHandler: nil)
+    }
+
+    /// An in-app tab switch must not pause the system PiP window.
     /// Check the live element in WebKit, since the app can become inactive during its transition.
     func pauseWhenHidden() {
         guard role == .player, currentVideo != nil else { pause(); return }
@@ -396,10 +406,6 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
             returnFromPictureInPicture()
             return
         }
-        #if os(iOS)
-        // WebKit starts the audio session with the media; do not activate it just by opening the app.
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
-        #endif
         webView.evaluateJavaScript("window.iurub?.togglePiP('\(id)');") { [weak self] result, _ in
             guard let self, self.currentVideo?.id == id else { return }
             switch result as? String {
@@ -514,12 +520,15 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
                 }
             }
             switch body["status"] as? String {
-            case "saved": saveFeedback = "Salvato in Guarda più tardi su YouTube"
-            case "removed": saveFeedback = "Rimosso da Guarda più tardi su YouTube"
-            case "alreadySaved": saveFeedback = "È già in Guarda più tardi su YouTube"
-            case "alreadyRemoved": saveFeedback = "Il video non è in Guarda più tardi"
-            case "submitted": saveFeedback = "Controlla la conferma di YouTube"
-            case "choose": saveFeedback = "Seleziona Guarda più tardi nel menu YouTube"
+            case "saved", "removed":
+                onPlaylistEdit?()
+                saveFeedback.send(body["status"] as? String == "saved" ? "Salvato" : "Rimosso")
+            case "alreadySaved": saveFeedback.send("Salvato")
+            case "alreadyRemoved": saveFeedback.send("Rimosso")
+            case "submitted":
+                onPlaylistEdit?()
+                notice = "YouTube non ha confermato la modifica. Apri Salvati per controllare."
+            case "choose": notice = "Seleziona Guarda più tardi nel menu YouTube."
             default: notice = "Apri il menu del video su YouTube e scegli Guarda più tardi. Se richiesto, accedi al tuo account."
             }
         case "youtubeRemoveResult":
@@ -665,9 +674,17 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
             <div id="movie_player"><video style="width:100%" playsinline preload="auto"
             src="data:video/mp4;base64,\(data.base64EncodedString())"></video></div>
             <button onclick="document.querySelector('video').play()">Riproduci la clip</button>
-            <p id="clock">Secondi 0</p><p id="rate">Velocità effettiva 1</p>
+            <p id="clock">Secondi 0</p><p id="events">Media</p><p id="rate">Velocità effettiva 1</p>
             <script>
             const v=document.querySelector('video');
+            const events = [], origin = Math.round(performance.timeOrigin);
+            function recordEvent(kind) {
+                events.push(kind+'@'+v.currentTime.toFixed(1));
+                document.querySelector('#events').textContent='Media '+origin+' '+events.slice(-12).join(' ');
+            }
+            for(const kind of ['playing','pause','ended','seeking','loadedmetadata','emptied','error'])
+                v.addEventListener(kind,()=>recordEvent(kind));
+            document.addEventListener('visibilitychange',()=>recordEvent(document.visibilityState));
             v.ontimeupdate=()=>document.querySelector('#clock').textContent='Secondi '+Math.floor(v.currentTime);
             v.onratechange=()=>document.querySelector('#rate').textContent='Velocità effettiva '+v.playbackRate;
             </script>
