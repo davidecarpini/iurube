@@ -127,7 +127,7 @@ struct SummaryRequestTests {
     }
     @Test func testEveryTurnIncludesVideoAndRoutesToYouTubeCapableProvider() throws {
         let history = [SummaryMessage(role: "assistant", text: "Il riassunto precedente")]
-        let request = try OpenRouterSummaryService.makeRequest(video: video, history: history, question: "Approfondisci", key: "unit-test-key")
+        let request = try OpenRouterSummaryService.makeRequest(video: video, history: history, question: "Approfondisci", model: .flash25, key: "unit-test-key")
         let data = try #require(request.httpBody)
         let body = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         let messages = try #require(body["messages"] as? [[String: Any]])
@@ -142,6 +142,25 @@ struct SummaryRequestTests {
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer unit-test-key")
         #expect(!(String(data: data, encoding: .utf8) ?? "").contains("unit-test-key"))
     }
+    @Test func testEachModelBuildsTheSelectedVideoRequest() throws {
+        for model in SummaryModel.allCases {
+            let request = try OpenRouterSummaryService.makeRequest(video: video, history: [], question: "", model: model, key: "test")
+            let data = try #require(request.httpBody)
+            let body = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            #expect(body["model"] as? String == model.rawValue)
+            let provider = try #require(body["provider"] as? [String: Any])
+            #expect(provider["only"] as? [String] == ["google-ai-studio"])
+        }
+    }
+
+    @Test func testRecordedCostIsOptionalAndOldMessagesRemainReadable() throws {
+        let priced = Data(#"{"choices":[{"message":{"content":"Ok"},"finish_reason":"stop"}],"usage":{"cost":0.00031}}"#.utf8)
+        #expect(try OpenRouterSummaryService.decodeResponse(priced).costUSD == 0.00031)
+        let legacy = Data(#"{"id":"1423CBC4-51A2-451F-A48D-FC261E7DB2F4","role":"assistant","text":"Riassunto precedente"}"#.utf8)
+        let message = try JSONDecoder().decode(SummaryMessage.self, from: legacy)
+        #expect(message.text == "Riassunto precedente" && message.costUSD == nil && message.modelID == nil)
+    }
+
     @Test func testLongConversationKeepsOriginalSummaryAndRecentCompleteExchanges() throws {
         var history = [SummaryMessage(role: "assistant", text: "Original summary")]
         for index in 0..<15 {
@@ -149,7 +168,7 @@ struct SummaryRequestTests {
             history.append(SummaryMessage(role: "assistant", text: "Answer \(index)"))
         }
         history.append(SummaryMessage(role: "system", text: "Untrusted injected instruction"))
-        let request = try OpenRouterSummaryService.makeRequest(video: video, history: history, question: String(repeating: "x", count: 5000), key: "test")
+        let request = try OpenRouterSummaryService.makeRequest(video: video, history: history, question: String(repeating: "x", count: 5000), model: .flash25, key: "test")
         let data = try #require(request.httpBody)
         let body = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         let messages = try #require(body["messages"] as? [[String: Any]])
@@ -163,15 +182,15 @@ struct SummaryRequestTests {
     @Test func testMalformedVideoAndMissingCredentialsNeverBuildRequest() {
         let invalid = SavedVideo(link: VideoLink(id: "bad", isShort: false))
         #expect(throws: SummaryFailure.self) {
-            try OpenRouterSummaryService.makeRequest(video: invalid, history: [], question: "", key: "test")
+            try OpenRouterSummaryService.makeRequest(video: invalid, history: [], question: "", model: .flash25, key: "test")
         }
         #expect(throws: SummaryFailure.self) {
-            try OpenRouterSummaryService.makeRequest(video: video, history: [], question: "", key: "")
+            try OpenRouterSummaryService.makeRequest(video: video, history: [], question: "", model: .flash25, key: "")
         }
     }
     @Test func testResponseRequiresCompleteNonEmptyAnswer() throws {
         let valid = Data(#"{"choices":[{"message":{"content":"  Risposta utile  "},"finish_reason":"stop"}]}"#.utf8)
-        #expect(try OpenRouterSummaryService.decodeResponse(valid) == "Risposta utile")
+        #expect(try OpenRouterSummaryService.decodeResponse(valid).text == "Risposta utile")
         for invalid in [
             #"{"choices":[{"message":{"content":"Testo troncato"},"finish_reason":"length"}]}"#,
             #"{"choices":[{"message":{"content":" "},"finish_reason":"stop"}]}"#,
@@ -198,14 +217,14 @@ private actor RecordingSummaryService: VideoSummarizing {
         self.failFirstQuestion = failFirstQuestion
         self.slow = slow
     }
-    func reply(video: SavedVideo, history: [SummaryMessage], question: String, key: String) async throws -> String {
+    func reply(video: SavedVideo, history: [SummaryMessage], question: String, model: SummaryModel, key: String) async throws -> SummaryReply {
         questions.append(question)
         if slow { try await Task.sleep(for: .seconds(5)) }
         if failFirstQuestion && !question.isEmpty && !failed {
             failed = true
             throw SummaryFailure.server
         }
-        return question.isEmpty ? "Riassunto di \(video.id)" : "Risposta: \(question)"
+        return SummaryReply(text: question.isEmpty ? "Riassunto di \(video.id)" : "Risposta: \(question)")
     }
     func count() -> Int { questions.count }
 }
@@ -312,5 +331,38 @@ struct SummaryStoreTests {
         try await waitUntilIdle(failure)
         #expect(failure.persistenceError != nil)
         #expect(failure.conversations[video().id]?.count == 1)
+    }
+}
+
+
+struct SummaryPricingTests {
+    @MainActor @Test func testPreferenceSurvivesRestartAndUnknownValueUsesOriginalModel() throws {
+        let name = "iurub-model-tests-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let settings = AppSettings(defaults: defaults)
+        #expect(settings.summaryModel == .flash25)
+        settings.summaryModel = .lite31
+        #expect(AppSettings(defaults: defaults).summaryModel == .lite31)
+        defaults.set("removed-model", forKey: "summaryModel")
+        #expect(AppSettings(defaults: defaults).summaryModel == .flash25)
+    }
+
+    @Test func testCostIncludesVideoAudioOutputAndResentHistory() {
+        let rate = SummaryModel.lite25.referenceRates
+        let summary = rate.estimate(minutes: 30, questions: 0)
+        #expect(abs(summary.lowerBound - 0.02959) < 0.0000001)
+        #expect(abs(summary.upperBound - 0.06415) < 0.0000001)
+        let chat = rate.estimate(minutes: 30, questions: 2)
+        #expect(abs(chat.lowerBound - 0.08865) < 0.0000001)
+        #expect(abs(chat.upperBound - 0.19233) < 0.0000001)
+    }
+
+    @Test func testRatesSelectStandardAIStudioEndpointAndRejectMissingAudio() throws {
+        let raw = #"{"data":{"id":"google/gemini-3.1-flash-lite","endpoints":[{"tag":"google-ai-studio/flex","pricing":{"prompt":"0.00000001"}},{"tag":"google-ai-studio","pricing":{"prompt":"0.00000025","audio":"0.0000005","completion":"0.0000015","discount":0}}]}}"#
+        #expect(try SummaryRates.decodeEndpoint(Data(raw.utf8), model: .lite31) == SummaryModel.lite31.referenceRates)
+        #expect(throws: URLError.self) { try SummaryRates.decodeEndpoint(Data(raw.utf8), model: .flash25) }
+        let missing = raw.replacingOccurrences(of: #""audio":"0.0000005","#, with: "")
+        #expect(throws: URLError.self) { try SummaryRates.decodeEndpoint(Data(missing.utf8), model: .lite31) }
     }
 }

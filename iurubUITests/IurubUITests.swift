@@ -9,6 +9,48 @@ final class IurubUITests: XCTestCase {
         app.launch()
     }
 
+    func testModelChoicePersistsAndControlsAutomaticSummaryAndFollowUp() throws {
+        app.buttons["settingsButton"].tap()
+        app.buttons["summaryModelSettings"].tap()
+        let lite = app.buttons["choose-google/gemini-2.5-flash-lite"]
+        XCTAssertTrue(lite.waitForExistence(timeout: 5))
+        lite.tap()
+        XCTAssertTrue(lite.isSelected)
+        capture("model-and-costs")
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--fixture"]
+        app.launch()
+        app.buttons["settingsButton"].tap()
+        app.buttons["summaryModelSettings"].tap()
+        XCTAssertTrue(lite.waitForExistence(timeout: 5))
+        XCTAssertTrue(lite.isSelected)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.buttons["closeSettings"].tap()
+        app.tabBars.buttons["Esplora"].tap()
+        let save = webBookmark("+ Guarda più tardi")
+        XCTAssertTrue(save.waitForExistence(timeout: 10))
+        save.tap()
+        XCTAssertTrue(webBookmark("Rimuovi da Guarda più tardi").waitForExistence(timeout: 10))
+        app.webViews.staticTexts["Musica per concentrarsi"].tap()
+        app.buttons["summaryButton"].tap()
+        let attribution = app.staticTexts.matching(identifier: "summaryReplyModel").firstMatch
+        XCTAssertTrue(attribution.waitForExistence(timeout: 10))
+        XCTAssertEqual(attribution.label, "Gemini 2.5 Flash-Lite")
+        app.buttons["closeSummary"].tap()
+
+        app.buttons["settingsButton"].tap()
+        app.buttons["summaryModelSettings"].tap()
+        app.buttons["choose-google/gemini-3.1-flash-lite"].tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.buttons["closeSettings"].tap()
+        app.buttons["summaryButton"].tap()
+        XCTAssertEqual(attribution.label, "Gemini 2.5 Flash-Lite")
+        app.buttons["Spiegamelo semplice"].tap()
+        let followUp = app.staticTexts.matching(identifier: "summaryReplyModel").element(boundBy: 1)
+        XCTAssertTrue(followUp.waitForExistence(timeout: 10))
+        XCTAssertEqual(followUp.label, "Gemini 3.1 Flash-Lite")
+    }
+
     func testYouTubePlaylistOpensByDefaultAndAccountSavePersists() throws {
         XCTAssertTrue(app.webViews.staticTexts["Guarda più tardi · account di prova"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.webViews.staticTexts["Video già salvato nell’account"].exists)
@@ -325,6 +367,37 @@ final class IurubUITests: XCTestCase {
 
 // Opt-in, read-only verification using the existing YouTube login.
 final class IurubLiveUITests: XCTestCase {
+    func testLiveFlashLite25ReturnsVideoSummaryAndCost() throws {
+        try checkLiveSummary(modelID: "google/gemini-2.5-flash-lite", name: "Gemini 2.5 Flash-Lite")
+    }
+
+    func testLiveFlashLite31ReturnsVideoSummaryAndCost() throws {
+        try checkLiveSummary(modelID: "google/gemini-3.1-flash-lite", name: "Gemini 3.1 Flash-Lite")
+    }
+
+    private func checkLiveSummary(modelID: String, name: String) throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_MODEL_LIVE"] == "1", "Uses OpenRouter for a 19-second public video")
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-state", "--summary-live"]
+        app.launch()
+        XCTAssertTrue(app.buttons["summaryButton"].waitForExistence(timeout: 30))
+        app.buttons["settingsButton"].tap()
+        app.buttons["summaryModelSettings"].tap()
+        app.buttons["choose-" + modelID].tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.buttons["closeSettings"].tap()
+        app.buttons["summaryButton"].tap()
+        let source = app.staticTexts["summaryReplyModel"]
+        let finished = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            source.exists || app.buttons["summaryRetry"].exists
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [finished], timeout: 180), .completed)
+        capture("live-" + name, app: app)
+        XCTAssertTrue(source.exists, "Provider did not return a successful summary")
+        XCTAssertTrue(source.label.hasPrefix(name + " · "), "Show the model and actual charge")
+    }
+
     func testRealVideoCommentsRemainAccessible() throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_LAYOUT_LIVE"] == "1", "Requires the public YouTube watch page")
         continueAfterFailure = false

@@ -145,6 +145,12 @@ struct VideoSummaryView: View {
                 Text(markdown(message.text))
                     .font(.body).lineSpacing(4).textSelection(.enabled)
                     .accessibilityIdentifier(isUser ? "summaryQuestion" : "summaryReply")
+                if !isUser {
+                    let name = message.modelID.flatMap(SummaryModel.init(rawValue:))?.name ?? SummaryModel.flash25.name
+                    Text(message.costUSD.map { name + " · " + $0.formatted(.currency(code: "USD").precision(.fractionLength(2...6))) } ?? name)
+                        .font(.caption2).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("summaryReplyModel")
+                }
             }
             .padding(16)
             .frame(maxWidth: isUser ? nil : .infinity, alignment: .leading)

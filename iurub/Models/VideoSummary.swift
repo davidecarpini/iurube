@@ -5,6 +5,13 @@ struct SummaryMessage: Identifiable, Codable, Equatable, Sendable {
     var id = UUID()
     let role: String
     let text: String
+    var modelID: String?
+    var costUSD: Double?
+}
+
+struct SummaryReply: Sendable {
+    let text: String
+    var costUSD: Double?
 }
 
 enum SummaryFailure: LocalizedError {
@@ -15,8 +22,8 @@ enum SummaryFailure: LocalizedError {
         case .invalidKey: return "La chiave OpenRouter non è valida. Aggiornala in Impostazioni."
         case .credentials: return "Il portachiavi non è disponibile. Sblocca il dispositivo e riprova."
         case .credits: return "Il credito OpenRouter non è sufficiente. Ricarica l’account per continuare."
-        case .rateLimit: return "Gemini sta ricevendo troppe richieste. Attendi un momento e riprova."
-        case .unavailable: return "Gemini non riesce ad analizzare questo video. Potrebbe essere privato, limitato o non disponibile."
+        case .rateLimit: return "Il servizio ha limitato le richieste per questo modello. Attendi e riprova, oppure cambia modello in Impostazioni."
+        case .unavailable: return "Questo modello o il video potrebbero non essere disponibili. Verifica il video oppure scegli un altro modello in Impostazioni."
         case .server: return "Il servizio di riassunto non è disponibile in questo momento. Riprova tra poco."
         case .invalidResponse: return "La risposta di Gemini è incompleta. Riprova."
         case .invalidVideo: return "Apri un video YouTube valido per richiedere il riassunto."
@@ -34,18 +41,17 @@ enum SummaryFailure: LocalizedError {
 }
 
 protocol VideoSummarizing: Sendable {
-    func reply(video: SavedVideo, history: [SummaryMessage], question: String, key: String) async throws -> String
+    func reply(video: SavedVideo, history: [SummaryMessage], question: String, model: SummaryModel, key: String) async throws -> SummaryReply
 }
 
 struct OpenRouterSummaryService: VideoSummarizing {
-    static let model = "google/gemini-2.5-flash"
     static let initialPrompt = """
     Riassumi questo video in italiano per aiutarmi a capirlo senza guardarlo tutto.
     Apri con l'idea centrale, poi 4–7 punti chiave, dettagli utili e una breve conclusione pratica.
     Adatta la lunghezza al contenuto: per un video breve bastano poche righe.
     Usa titoletti, paragrafi brevi e punti elenco. Aggiungi timestamp solo quando verificabili.
     """
-    static func makeRequest(video: SavedVideo, history: [SummaryMessage], question: String, key: String) throws -> URLRequest {
+    static func makeRequest(video: SavedVideo, history: [SummaryMessage], question: String, model: SummaryModel, key: String) throws -> URLRequest {
         guard VideoLink.validID(video.id) else { throw SummaryFailure.invalidVideo }
         guard !key.isEmpty else { throw SummaryFailure.missingKey }
         var messages: [[String: Any]] = [
@@ -69,7 +75,7 @@ struct OpenRouterSummaryService: VideoSummarizing {
         messages += context.map { ["role": $0.role, "content": $0.text] }
         if !question.isEmpty { messages.append(["role": "user", "content": String(question.prefix(4000))]) }
         let body: [String: Any] = [
-            "model": model,
+            "model": model.rawValue,
             "provider": ["only": ["google-ai-studio"], "allow_fallbacks": false],
             "messages": messages, "max_tokens": 4096, "reasoning": ["effort": "low"]
         ]
@@ -82,13 +88,15 @@ struct OpenRouterSummaryService: VideoSummarizing {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
     }
-    static func decodeResponse(_ data: Data) throws -> String {
+    static func decodeResponse(_ data: Data) throws -> SummaryReply {
         struct Response: Decodable {
             struct Choice: Decodable {
                 struct Message: Decodable { let content: String? }
                 let message: Message
                 let finish_reason: String?
             }
+            struct Usage: Decodable { let cost: Double? }
+            let usage: Usage?
             let choices: [Choice]
         }
         guard let response = try? JSONDecoder().decode(Response.self, from: data),
@@ -96,10 +104,10 @@ struct OpenRouterSummaryService: VideoSummarizing {
               let answer = first.message.content?.trimmingCharacters(in: .whitespacesAndNewlines), !answer.isEmpty else {
             throw SummaryFailure.invalidResponse
         }
-        return answer
+        return SummaryReply(text: answer, costUSD: response.usage?.cost.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil })
     }
-    func reply(video: SavedVideo, history: [SummaryMessage], question: String, key: String) async throws -> String {
-        let request = try Self.makeRequest(video: video, history: history, question: question, key: key)
+    func reply(video: SavedVideo, history: [SummaryMessage], question: String, model: SummaryModel, key: String) async throws -> SummaryReply {
+        let request = try Self.makeRequest(video: video, history: history, question: question, model: model, key: key)
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw SummaryFailure.server }
         guard (200..<300).contains(http.statusCode) else { throw SummaryFailure.forStatus(http.statusCode) }
@@ -117,6 +125,7 @@ final class SummaryStore: ObservableObject {
     @Published private(set) var persistenceError: String?
     private let fileURL: URL
     private let service: any VideoSummarizing
+    private let modelProvider: () -> SummaryModel
     private let keyProvider: () throws -> String?
     private var tasks: [String: Task<Void, Never>] = [:]
     private var requestIDs: [String: UUID] = [:]
@@ -128,10 +137,12 @@ final class SummaryStore: ObservableObject {
     private var automaticRequestToken: UUID?
 
     init(fileURL: URL? = nil, service: any VideoSummarizing = OpenRouterSummaryService(),
+         modelProvider: @escaping () -> SummaryModel = { .flash25 },
          keyProvider: @escaping () throws -> String? = SummaryCredentials.read) {
         self.fileURL = fileURL ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("iurub/conversations.json")
         self.service = service
+        self.modelProvider = modelProvider
         self.keyProvider = keyProvider
         if FileManager.default.fileExists(atPath: self.fileURL.path) {
             do {
@@ -190,18 +201,19 @@ final class SummaryStore: ObservableObject {
         requestIDs[id] = token
         if automatic { automaticRequestToken = token }
         let history = conversations[id] ?? []
+        let model = modelProvider()
         tasks[id] = Task { [weak self] in
             guard let self else { return }
             defer { self.finishRequest(videoID: id, token: token) }
             do {
                 try Task.checkCancellation()
                 guard let key = try self.keyProvider(), !key.isEmpty else { throw SummaryFailure.missingKey }
-                let answer = try await self.service.reply(video: video, history: history, question: text, key: key)
+                let answer = try await self.service.reply(video: video, history: history, question: text, model: model, key: key)
                 try Task.checkCancellation()
                 guard self.requestIDs[id] == token else { return }
                 var result = history
                 if !text.isEmpty { result.append(SummaryMessage(role: "user", text: text)) }
-                result.append(SummaryMessage(role: "assistant", text: answer))
+                result.append(SummaryMessage(role: "assistant", text: answer.text, modelID: model.rawValue, costUSD: answer.costUSD))
                 self.conversations[id] = result
                 self.pending[id] = nil
                 self.persist()
@@ -274,13 +286,13 @@ final class SummaryStore: ObservableObject {
 actor FixtureSummaryService: VideoSummarizing {
     private var shouldFail: Bool
     init(failOnce: Bool = false) { shouldFail = failOnce }
-    func reply(video: SavedVideo, history: [SummaryMessage], question: String, key: String) async throws -> String {
+    func reply(video: SavedVideo, history: [SummaryMessage], question: String, model: SummaryModel, key: String) async throws -> SummaryReply {
         try await Task.sleep(for: .milliseconds(350))
         if shouldFail { shouldFail = false; throw SummaryFailure.server }
         if question.isEmpty {
-            return "**L’idea centrale**\n\nIl video mostra come imparare con piccoli esercizi costanti.\n\n**Punti chiave**\n\n• Alterna pratica e ripasso.\n• Verifica quello che ricordi.\n• Parti da un obiettivo concreto.\n\n**Da provare**\n\nDedica dieci minuti al giorno a un esercizio."
+            return SummaryReply(text: "**L’idea centrale**\n\nIl video mostra come imparare con piccoli esercizi costanti.\n\n**Punti chiave**\n\n• Alterna pratica e ripasso.\n• Verifica quello che ricordi.\n• Parti da un obiettivo concreto.\n\n**Da provare**\n\nDedica dieci minuti al giorno a un esercizio.")
         }
-        return "Nel video si suggerisce di alternare pratica e ripasso. Un esempio pratico: dopo una spiegazione, chiudi gli appunti e prova a raccontarla con parole tue. Questo esempio è un approfondimento, non una citazione del video."
+        return SummaryReply(text: "Nel video si suggerisce di alternare pratica e ripasso. Un esempio pratico: dopo una spiegazione, chiudi gli appunti e prova a raccontarla con parole tue. Questo esempio è un approfondimento, non una citazione del video.")
     }
 }
 #endif

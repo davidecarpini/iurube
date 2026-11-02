@@ -23,6 +23,12 @@ struct SettingsView: View {
                     Text("L’impostazione si applica subito a tutte le sezioni, alle ricerche e ai canali. I video brevi pubblicati come video normali rimangono visibili.")
                 }
                 Section {
+                    NavigationLink {
+                        SummaryModelSettingsView()
+                    } label: {
+                        LabeledContent("Modello e costi", value: settings.summaryModel.shortName)
+                    }
+                    .accessibilityIdentifier("summaryModelSettings")
                     Button { showingCredentials = true } label: {
                         Label {
                             HStack {

@@ -1,3 +1,17 @@
+# iurub 1.4.0 · build 6
+
+2 novembre 2026. In Impostazioni → Modello e costi si sceglie tra Gemini 2.5 Flash-Lite, 3.1 Flash-Lite, 2.5 Flash e 3.8 Flash. La preferenza viene conservata. Le richieste in partenza usano il modello scelto e le risposte riportano il modello e, quando fornito da OpenRouter, il costo. Le vecchie conversazioni rimangono leggibili.
+
+Il confronto in USD usa le tariffe standard di Google AI Studio su OpenRouter, comprese le componenti audio e di risposta. La durata del video e il numero di domande modificano la stima per 1 e 30 video. Il calcolo, le ipotesi e la data del listino di riserva sono visibili nell’app.
+
+**Verifica.** Sono passati 46 test Swift e la prova nel simulatore della selezione persistente, del riassunto anticipato e di una domanda con un modello diverso nella stessa chat. Due test distinti hanno verificato sul video pubblico di 19 secondi “Me at the zoo” che ciascun Flash-Lite genera un riassunto e restituisce un costo effettivo. Nel primo tentativo 2.5 Flash-Lite aveva ricevuto un limite di richieste. I test successivi sono passati per entrambi. Per 3.8 Flash sono stati verificati catalogo, tariffe e costruzione della richiesta.
+
+**Distribuzione.** Xcode ha firmato e caricato la build 6 di `it.davidecarpini.iurub`. Apple ha confermato la ricezione alle 10:16. In App Store Connect la versione 1.4.0 appare nell’elenco di TestFlight con la build 6 assegnata al gruppo interno **Internals** e un invito registrato. [Dettaglio build](https://appstoreconnect.apple.com/apps/6829671295/testflight/ios/d8d66bc0-82be-4542-92fa-4a8069a09035)
+
+Gli esiti sono in `build/ModelCosts-140-Validation.xcresult` e `build/ModelCosts-140-Live.xcresult`. L’archivio distribuito è `build/Distribution/iurub-1.4.0-6.xcarchive`.
+
+---
+
 # iurub 1.3.1 — Commenti, segnalibri e riassunti anticipati
 
 2 novembre 2026 · versione **1.3.1, build 5** · progetto `/Users/davidecarpini/apps/iurub`.
@@ -45,7 +59,7 @@ Sul sito reale è stato aperto il video pubblico “Me at the zoo”. Il control
 
 ## Distribuzione e limiti
 
-**L’app è installata sull’iPhone, ma non è su TestFlight.** L’accesso automatico al sito Apple continua a essere negato dal controllo dei permessi, anche sulla pagina in cui l’utente ha effettuato il login. Il rifiuto vieta di completare lo stesso passaggio attraverso un’altra applicazione; non è stato aggirato. L’archivio usa Apple Development; firma per distribuzione e caricamento restano da completare.
+Apple ha ricevuto iurub 1.3.1 (5) il 2 novembre 2026 alle 09:45, ora italiana. Xcode ha confermato il caricamento e l’avvio dell’elaborazione per TestFlight. [Apri TestFlight](https://appstoreconnect.apple.com/apps/6829671295/testflight/ios)
 
 L’iPhone era bloccato durante il tentativo di apertura automatica: l’utente può aprire iurub dopo lo sblocco. Non sono stati cancellati cookie, credenziali, playlist o dati precedenti.
 

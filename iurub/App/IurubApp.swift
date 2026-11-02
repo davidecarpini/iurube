@@ -20,7 +20,8 @@ struct IurubApp: App {
             try? FileManager.default.removeItem(at: testURL)
         }
         _library = StateObject(wrappedValue: LibraryStore(fileURL: testing ? testURL : nil))
-        _settings = StateObject(wrappedValue: AppSettings(defaults: defaults))
+        let preferences = AppSettings(defaults: defaults)
+        _settings = StateObject(wrappedValue: preferences)
         let playbackTestURL = FileManager.default.temporaryDirectory.appendingPathComponent("iurub-ui-tests/playback.json")
         let livePlayback = ProcessInfo.processInfo.arguments.contains("--summary-live") || ProcessInfo.processInfo.arguments.contains("--playback-live")
         if testing && ProcessInfo.processInfo.arguments.contains("--reset-state") {
@@ -38,12 +39,16 @@ struct IurubApp: App {
         if testing && ProcessInfo.processInfo.arguments.contains("--fixture") {
             _summaries = StateObject(wrappedValue: SummaryStore(fileURL: conversationURL,
                 service: FixtureSummaryService(failOnce: ProcessInfo.processInfo.arguments.contains("--summary-error-once")),
-                keyProvider: { "fixture-only-not-a-key" }))
-        } else { _summaries = StateObject(wrappedValue: SummaryStore()) }
+                modelProvider: { preferences.summaryModel }, keyProvider: { "fixture-only-not-a-key" }))
+        } else {
+            _summaries = StateObject(wrappedValue: SummaryStore(fileURL: testing ? conversationURL : nil,
+                modelProvider: { preferences.summaryModel }))
+        }
         #else
         _library = StateObject(wrappedValue: LibraryStore())
-        _settings = StateObject(wrappedValue: AppSettings())
-        _summaries = StateObject(wrappedValue: SummaryStore())
+        let preferences = AppSettings()
+        _settings = StateObject(wrappedValue: preferences)
+        _summaries = StateObject(wrappedValue: SummaryStore(modelProvider: { preferences.summaryModel }))
         _playback = StateObject(wrappedValue: PlaybackStore())
         #endif
     }

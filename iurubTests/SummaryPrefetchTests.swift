@@ -11,10 +11,10 @@ private actor PrefetchTestService: VideoSummarizing {
     private(set) var calls: [Call] = []
     private(set) var maximumActive = 0
     private var active = 0
-    private var continuations: [UUID: CheckedContinuation<String, Error>] = [:]
+    private var continuations: [UUID: CheckedContinuation<SummaryReply, Error>] = [:]
 
     // Intentionally ignores cancellation so tests can deliver late provider replies.
-    func reply(video: SavedVideo, history: [SummaryMessage], question: String, key: String) async throws -> String {
+    func reply(video: SavedVideo, history: [SummaryMessage], question: String, model: SummaryModel, key: String) async throws -> SummaryReply {
         try await withCheckedThrowingContinuation { continuation in
             let call = Call(id: UUID(), videoID: video.id, question: question)
             calls.append(call)
@@ -26,7 +26,7 @@ private actor PrefetchTestService: VideoSummarizing {
     func succeed(_ index: Int, text: String = "Riassunto di prova") {
         guard calls.indices.contains(index), let continuation = continuations.removeValue(forKey: calls[index].id) else { return }
         active -= 1
-        continuation.resume(returning: text)
+        continuation.resume(returning: SummaryReply(text: text))
     }
     func fail(_ index: Int) {
         guard calls.indices.contains(index), let continuation = continuations.removeValue(forKey: calls[index].id) else { return }
