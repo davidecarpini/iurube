@@ -94,6 +94,7 @@
       html.iurub-list-root ytm-mobile-topbar-renderer .mobile-topbar-header:has(> .non-search-mode .mobile-topbar-title) > button.mobile-topbar-back-arrow,
       html.iurub-list-root ytm-mobile-topbar-renderer .non-search-mode :is(.mobile-topbar-back-arrow, .mobile-topbar-back-arrow-button, [aria-label="Indietro" i], [aria-label="Torna indietro" i], [aria-label="Back" i], [aria-label="Go back" i]),
       html.iurub-list-root ytm-mobile-topbar-renderer .non-search-mode > :is(button, [role="button"], a, :has(> button)):has(+ .mobile-topbar-title) { display:none !important; }
+      html.iurub-list-root ytm-mobile-topbar-renderer .non-search-mode .mobile-topbar-title { padding-inline-start:12px; }
       html.iurub-watch-later ytm-mobile-topbar-renderer .mobile-topbar-title,
       html.iurub-watch-later ytm-mobile-topbar-renderer button,
       html.iurub-watch-later ytm-mobile-topbar-renderer c3-icon { color:var(--yt-spec-text-primary,var(--iurub-toolbar-foreground)) !important; }
@@ -124,6 +125,9 @@
       .iurub-minimal-card > .iurub-summary { grid-area:1/4; }
       @media(max-width:430px) {
         .ytLockupViewModelHorizontal:has(.iurub-summary) .ytLockupViewModelContentImage { max-width:28vw; }
+        .YtmCompactMediaItemHost:has(.iurub-summary) > .YtmCompactMediaItemImage { flex:0 0 clamp(84px,26vw,112px) !important; width:clamp(84px,26vw,112px) !important; min-width:0; }
+        .YtmCompactMediaItemHost:has(.iurub-summary) > .YtmCompactMediaItemImage > ytm-compact-thumbnail { width:100% !important; height:auto !important; aspect-ratio:16/9; }
+        .YtmCompactMediaItemMetadata:has(> .iurub-summary) > .YtmCompactMediaItemMetadataContent { flex:1 1 0% !important; min-width:0; padding-inline-end:0 !important; margin-inline-end:0 !important; }
       }
       html.iurub-inline-comments body { position:static !important; overflow-y:auto !important; }
       html.iurub-inline-comments ytm-engagement-panel:has(.engagement-panel-comments-section) { position:relative !important; display:block; inset:auto !important; width:100% !important; height:auto !important; transform:none !important; }
