@@ -3,13 +3,18 @@ import Security
 
 /// Stored separately from the app bundle, defaults and conversation files.
 enum SummaryCredentials {
-    private static let service = "it.davidecarpini.iurub.openrouter"
-    private static var query: [String: Any] {
+    private static var service: String {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing") { return "it.davidecarpini.iurub.uitests.openrouter" }
+        #endif
+        return "it.davidecarpini.iurub.openrouter"
+    }
+    private static func query(account: String = "personal-api-key") -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: service, kSecAttrAccount as String: "api-key"]
+         kSecAttrService as String: service, kSecAttrAccount as String: account]
     }
     static func read() throws -> String? {
-        var lookup = query
+        var lookup = query()
         lookup[kSecReturnData as String] = true
         lookup[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
@@ -26,23 +31,23 @@ enum SummaryCredentials {
         }
         let attributes: [String: Any] = [kSecValueData as String: Data(key.utf8),
                                         kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
-        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        let status = SecItemUpdate(query() as CFDictionary, attributes as CFDictionary)
         if status == errSecItemNotFound {
-            guard SecItemAdd(query.merging(attributes) { _, new in new } as CFDictionary, nil) == errSecSuccess else {
+            guard SecItemAdd(query().merging(attributes) { _, new in new } as CFDictionary, nil) == errSecSuccess else {
                 throw SummaryFailure.credentials
             }
         } else if status != errSecSuccess { throw SummaryFailure.credentials }
     }
-    /// A development install can provision the user's key once through the app's
-    /// private data container. Never distribute this file with an app or archive.
-    static func importProvisionedKey() {
+    static func remove() throws {
+        let status = SecItemDelete(query() as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else { throw SummaryFailure.credentials }
+    }
+
+    /// Older builds could import a file into the same item as a manually entered key.
+    /// Start a new, user-only slot. Never read or migrate the old secret.
+    static func discardLegacyProvisioning() {
+        SecItemDelete(query(account: "api-key") as CFDictionary)
         guard let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
-        let file = directory.appendingPathComponent(".iurub-openrouter-key")
-        guard FileManager.default.fileExists(atPath: file.path) else { return }
-        do {
-            let key = try String(contentsOf: file, encoding: .utf8)
-            try save(key)
-            try FileManager.default.removeItem(at: file)
-        } catch { /* Keep the provision file for a retry when the device is unlocked. */ }
+        try? FileManager.default.removeItem(at: directory.appendingPathComponent(".iurub-openrouter-key"))
     }
 }

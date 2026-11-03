@@ -78,12 +78,13 @@ struct OpenRouterCredentialsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var key = ""
     @State private var error: String?
+    @State private var hasKey = false
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    SecureField("Chiave API OpenRouter", text: $key)
+                    SecureField(hasKey ? "Incolla una nuova chiave" : "Incolla la tua chiave", text: $key)
                         .autocorrectionDisabled()
                         #if os(iOS)
                         .textInputAutocapitalization(.never)
@@ -91,13 +92,26 @@ struct OpenRouterCredentialsView: View {
                         .privacySensitive()
                         .accessibilityIdentifier("openRouterKeyField")
                     if let error { Text(error).font(.caption).foregroundStyle(.red) }
-                } header: { Text("Chiave API") } footer: {
-                    Text("La chiave viene conservata nel Portachiavi di questo dispositivo. Non viene mostrata nelle chat né inclusa nei salvataggi.")
+                    if hasKey {
+                        Button("Rimuovi da questo iPhone", role: .destructive) {
+                            do { try SummaryCredentials.remove(); key = ""; hasKey = false; error = nil }
+                            catch { self.error = error.localizedDescription }
+                        }.accessibilityIdentifier("removeOpenRouterKey")
+                    }
+                } header: { Text(hasKey ? "Chiave personale configurata" : "Chiave personale") } footer: {
+                    Text("Serve solo per i riassunti e le domande sui video. Rimane nel Portachiavi di questo dispositivo.")
                 }
                 Section {
-                    Text("Gemini analizza i video pubblici di YouTube tramite OpenRouter. I video privati o con limitazioni di accesso potrebbero non essere disponibili.")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                }
+                    guideStep("1. Accedi a OpenRouter", detail: "Apri la pagina delle chiavi. Accedi o crea un account: può essere diverso da quello di YouTube.")
+                    Link("Apri la pagina delle chiavi", destination: URL(string: "https://openrouter.ai/settings/keys")!)
+                        .accessibilityIdentifier("openRouterKeysLink")
+                    guideStep("2. Crea una chiave", detail: "Scegli «Create Key», chiamala «iurub» e imposta un limite di spesa. Copia la chiave appena viene mostrata.")
+                    guideStep("3. Torna in iurub", detail: "Incolla la chiave nel campo qui sopra e tocca «Salva». Ora puoi aprire un video e scegliere «Riassunto».")
+                } header: { Text("Come ottenere la chiave") }
+                Section {
+                    Text("Riassunti e domande usano il tuo credito OpenRouter. Se il saldo è a zero, puoi aggiungere credito al tuo account. Il limite della chiave non è una ricarica.")
+                    Link("Controlla saldo e crediti", destination: URL(string: "https://openrouter.ai/settings/credits")!)
+                } header: { Text("Quanto spenderò?") }
             }
             .navigationTitle("OpenRouter").inlineTitle()
             .toolbar {
@@ -109,7 +123,15 @@ struct OpenRouterCredentialsView: View {
                 }
             }
         }
+        .onAppear { hasKey = (try? SummaryCredentials.read()) != nil }
         .onDisappear { key = "" }
+    }
+
+    private func guideStep(_ title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.subheadline.weight(.semibold))
+            Text(detail).font(.subheadline).foregroundStyle(.secondary)
+        }.padding(.vertical, 3)
     }
 
     private func save() {

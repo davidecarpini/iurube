@@ -211,6 +211,42 @@ final class IurubUITests: XCTestCase {
         XCTAssertEqual(followUp.label, "Gemini 3.1 Flash-Lite")
     }
 
+    func testPersonalKeyGuideSaveRestartAndRemove() throws {
+        func openKeySettings() {
+            app.buttons["settingsButton"].tap()
+            let settings = app.buttons["summaryCredentialsButton"]
+            XCTAssertTrue(settings.waitForExistence(timeout: 5))
+            settings.tap()
+        }
+        openKeySettings()
+        XCTAssertTrue(app.links["openRouterKeysLink"].waitForExistence(timeout: 5))
+        capture("guida-chiave-openrouter")
+        let key = app.secureTextFields["openRouterKeyField"]
+        let save = app.buttons["saveOpenRouterKey"]
+        XCTAssertFalse(save.isEnabled)
+        key.tap()
+        key.typeText("formato-errato")
+        save.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'non è valida'")).firstMatch.exists)
+        key.tap()
+        key.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "formato-errato".count))
+        key.typeText("sk-or-test-personal-settings-value")
+        save.tap()
+        let settings = app.buttons["summaryCredentialsButton"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        XCTAssertTrue(settings.label.contains("Configurato"))
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--fixture"]
+        app.launch()
+        openKeySettings()
+        let remove = app.buttons["removeOpenRouterKey"]
+        XCTAssertTrue(remove.waitForExistence(timeout: 5))
+        remove.tap()
+        XCTAssertTrue(remove.waitForNonExistence(timeout: 5))
+        app.buttons["Annulla"].tap()
+        XCTAssertTrue(settings.label.contains("Aggiungi chiave"))
+    }
+
     func testLateOriginalConfirmationChangesBookmarkWithoutAnAlert() throws {
         app.terminate()
         app.launchArguments.append("--late-playlist-toast")

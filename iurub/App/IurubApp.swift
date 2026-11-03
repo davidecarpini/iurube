@@ -8,12 +8,13 @@ struct IurubApp: App {
     @StateObject private var playback: PlaybackStore
 
     init() {
-        SummaryCredentials.importProvisionedKey()
+        SummaryCredentials.discardLegacyProvisioning()
         #if DEBUG
         let testing = ProcessInfo.processInfo.arguments.contains("--ui-testing")
         let defaults = testing ? UserDefaults(suiteName: "it.davidecarpini.iurub.uitests")! : .standard
         if testing && ProcessInfo.processInfo.arguments.contains("--reset-state") {
             defaults.removePersistentDomain(forName: "it.davidecarpini.iurub.uitests")
+            try? SummaryCredentials.remove() // Isolated test Keychain service.
         }
         let testURL = FileManager.default.temporaryDirectory.appendingPathComponent("iurub-ui-tests/videos.json")
         if testing && ProcessInfo.processInfo.arguments.contains("--reset-state") {
