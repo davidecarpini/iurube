@@ -502,6 +502,46 @@ async function playbackSetup(config = {}, stateOverrides = {}) {
 }
 const playbackMessages = messages => messages.filter(message => message.type === 'playback');
 
+test('Finestra starts a paused video once, waits for frames, then requests system PiP once', async () => {
+  const {dom,d,w} = await playbackSetup({}, {readyState:0});
+  try {
+    const media=d.querySelector('video'), id='jfKfPfyJRdk';
+    let paused=true, plays=0, presentations=0;
+    Object.defineProperty(media,'paused',{get:()=>paused});
+    media.play=async()=>{plays++; paused=false;};
+    media.webkitSupportsPresentationMode=()=>true;
+    media.webkitSetPresentationMode=mode=>{assert.equal(mode,'picture-in-picture'); presentations++;};
+    assert.equal(w.iurub.manualPiP('M7lc1UVf-VE','tap'),'pending');
+    assert.equal(plays,0);
+    assert.equal(w.iurub.manualPiP(id,'tap'),'pending');
+    assert.equal(w.iurub.manualPiP(id,'tap'),'pending');
+    w.playbackState.readyState=3;
+    assert.equal(w.iurub.manualPiP(id,'tap'),'requested');
+    assert.equal(w.iurub.manualPiP(id,'tap'),'requested');
+    assert.equal(plays,1);
+    assert.equal(presentations,1);
+  } finally { dom.window.close(); }
+});
+
+test('Finestra activates the YouTube poster before a video exists and respects unavailable system PiP', async () => {
+  const {dom,d,w} = await playbackSetup();
+  try {
+    const media=d.querySelector('video'), player=d.querySelector('#movie_player'), id='jfKfPfyJRdk';
+    media.remove();
+    let activations=0, paused=true;
+    player.playVideo=()=>{activations++;};
+    assert.equal(w.iurub.manualPiP(id,'tap'),'pending');
+    assert.equal(w.iurub.manualPiP(id,'tap'),'pending');
+    player.append(media);
+    Object.defineProperty(media,'paused',{get:()=>paused});
+    media.play=async()=>{paused=false;};
+    media.disablePictureInPicture=true;
+    assert.equal(w.iurub.manualPiP(id,'tap'),'inline');
+    assert.equal(activations,1);
+    assert.equal(paused,false);
+  } finally { dom.window.close(); }
+});
+
 test('hidden player keeps only the detached media playing and resumes normal pause on exit', async () => {
   const {dom,d,w,messages} = await playbackSetup();
   try {

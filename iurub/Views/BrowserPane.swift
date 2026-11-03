@@ -102,6 +102,12 @@ struct BrowserPane: View {
                 }
             }
             .onDisappear { session.onSave = nil }
+            .onChange(of: session.windowHint) { _, value in
+                guard let hint = value else { return }
+                feedbackID = UUID()
+                feedback = hint
+                session.windowHint = nil
+            }
             .alert("iurub", isPresented: Binding(get: { session.notice != nil }, set: { if !$0 { session.notice = nil } })) {
                 Button("OK") { session.notice = nil }
             } message: { Text(session.notice ?? "") }

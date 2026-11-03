@@ -43,6 +43,10 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     @Published private(set) var currentVideo: SavedVideo?
     @Published private(set) var loadError: String?
     @Published var notice: String?
+    @Published var windowHint: String?
+    var onInlineWindow: (() -> Void)?
+    private var manualPiPToken: UUID?
+    private var manualPiPTask: Task<Void, Never>?
     @Published var externalURL: URL?
     var onPlaylistEdit: ((_ verifyAgainstPlaylist: Bool) -> Void)?
     @Published private(set) var youtubeSavedIDs: Set<String> = []
@@ -380,6 +384,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     func loadVideo(_ video: SavedVideo, position: Double) {
         guard VideoLink.validID(video.id), shortsEnabled || !video.isShort else { return }
+        cancelManualPiP()
         let seconds = position.isFinite ? min(PlaybackRecord.maximumTime, max(0, position)) : 0
         pendingHistoryAdoption = nil
         resumeTarget = ["id": video.id, "position": seconds]
@@ -510,6 +515,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         if webView.url == nil { load(lastURL) } else { webView.reload() }
     }
     func pause() {
+        cancelManualPiP()
         departingPlayingID = nil
         captureProgress()
         webView.pauseAllMediaPlayback(completionHandler: nil)
@@ -598,15 +604,37 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
             returnFromPictureInPicture()
             return
         }
-        webView.evaluateJavaScript("window.iurub?.togglePiP('\(id)');") { [weak self] result, _ in
-            guard let self, self.currentVideo?.id == id else { return }
-            switch result as? String {
-            case "requested": break
-            case "playFirst": self.notice = "Avvia il video, poi tocca di nuovo Picture in Picture."
-            case "notReady", nil: self.notice = "Il video si sta caricando. Avvialo e riprova."
-            default: self.notice = "Picture in Picture non è disponibile per questo video o dispositivo."
+        guard manualPiPToken == nil else { return }
+        let token = UUID(), generation = navigationGeneration
+        manualPiPToken = token
+        manualPiPTask = Task { [weak self] in
+            guard let self else { return }
+            let deadline = ContinuousClock.now + .seconds(12)
+            let script = "window.iurub?.manualPiP('\(id)', '\(token.uuidString)');"
+            while !Task.isCancelled, navigationGeneration == generation, currentVideo?.id == id {
+                let state = try? await webView.evaluateJavaScript(script) as? String
+                guard !Task.isCancelled, manualPiPToken == token, navigationGeneration == generation else { return }
+                switch state {
+                case "requested": return // The actual presentation change (or rejection) finishes the request.
+                case "inline": finishManualPiP(inline: true); return
+                default:
+                    guard ContinuousClock.now < deadline else { finishManualPiP(inline: false); return }
+                    try? await Task.sleep(for: .milliseconds(150))
+                }
             }
         }
+    }
+
+    func cancelManualPiP() {
+        manualPiPTask?.cancel()
+        manualPiPTask = nil
+        manualPiPToken = nil
+    }
+
+    private func finishManualPiP(inline: Bool) {
+        cancelManualPiP()
+        if inline { onInlineWindow?() }
+        else { windowHint = "La finestra non è disponibile per questo video." }
     }
 
     func saveCurrent() {
@@ -711,10 +739,13 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
                   body["session"] as? String == playbackSession,
                   VideoLink.parse(webView.url?.absoluteString ?? "")?.id == id else { return }
             if type == "pipFailed" {
-                notice = "Il player non ha aperto la finestra Picture in Picture. Riprova durante la riproduzione."
+                if let token = manualPiPToken, body["token"] as? String == token.uuidString {
+                    finishManualPiP(inline: true)
+                }
             } else {
                 mediaRate = (body["rate"] as? Double).flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
                 isDetached = body["detached"] as? Bool ?? false
+                if isDetached { cancelManualPiP() }
                 isPlaying = body["playing"] as? Bool ?? false
                 videoEnded = body["ended"] as? Bool ?? false
             }

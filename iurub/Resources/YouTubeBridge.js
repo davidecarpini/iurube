@@ -691,7 +691,36 @@
     if (next == null) return false;
     try { media.playbackRate = next; reportMediaControls(); return media.playbackRate === next; } catch { return false; }
   }
-  function togglePiP(id, notifyFailure = true, wasPlayingAtHandoff = false) {
+  // Only the explicit Finestra action may start a paused video. YouTube can
+  // display its poster before it has attached a playable media element.
+  let manualWindow = null;
+  function manualPiP(id, token) {
+    if (!trackPlayback || parseLink(location.href)?.id !== id) return 'pending';
+    if (manualWindow?.token !== token) manualWindow = {token, media:null, startedPlayer:false};
+    let media = mainVideo();
+    if (detached(media)) return 'requested';
+    if ((!media || media.paused || media.readyState < 1) && !manualWindow.startedPlayer) {
+      const player = document.querySelector('#movie_player');
+      const playButton = document.querySelector('.ytp-large-play-button,ytm-player .ytp-play-button');
+      if (typeof player?.playVideo === 'function') {
+        manualWindow.startedPlayer = true;
+        try { player.playVideo(); } catch {}
+      } else if (playButton && (!media || media.paused)) {
+        manualWindow.startedPlayer = true;
+        playButton.click();
+      }
+      media = mainVideo();
+    }
+    if (!media) return 'pending';
+    if ((media.paused || media.ended) && manualWindow.media !== media) {
+      manualWindow.media = media;
+      try { media.play()?.catch(() => {}); } catch {}
+    }
+    if (media.paused || media.ended || media.readyState < 2) return 'pending';
+    if (enteringPiP?.media === media) return 'requested';
+    return togglePiP(id, true, true, token) === 'requested' ? 'requested' : 'inline';
+  }
+  function togglePiP(id, notifyFailure = true, wasPlayingAtHandoff = false, token = null) {
     const media = mainVideo();
     if (!trackPlayback || parseLink(location.href)?.id !== id || !media || media.readyState < 2) return 'notReady';
     const active = detached(media);
@@ -706,7 +735,7 @@
     const failed = () => {
       if (parseLink(location.href)?.id !== id || mainVideo() !== media || detached(media) !== active) return;
       if (enteringPiP === request) enteringPiP = null;
-      if (notifyFailure) post('pipFailed', {id, session:playbackSession});
+      if (notifyFailure) post('pipFailed', {id, session:playbackSession, token});
     };
     try {
       if (webkitAPI) media.webkitSetPresentationMode(active ? 'inline' : 'picture-in-picture');
@@ -890,6 +919,7 @@
     },
     currentVideo,
     stepSpeed,
+    manualPiP,
     togglePiP,
     setMiniPlayer,
     returnToWatchPage() {

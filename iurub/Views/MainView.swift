@@ -20,6 +20,7 @@ struct MainView: View {
     @State private var watchLayout = ""
     #endif
     @State private var floating = false
+    @State private var lastBrowseTab = 1
     @State private var openingVideoToken = UUID()
     // Session-only hints come from the account UI, never the legacy local library.
     // Missing IDs in a partially loaded playlist do not mean "not saved".
@@ -72,7 +73,8 @@ struct MainView: View {
                 resetMembershipHints()
                 if tab != 1 { watchLater.openStartPage() }
             }
-            if old == 0 { player.captureProgress() }
+            if old == 0 { player.cancelManualPiP(); player.captureProgress() }
+            if tab != 0 { lastBrowseTab = tab }
             for (index, session) in sessions.enumerated() where index != tab && session !== player {
                 session.pauseWhenHidden()
             }
@@ -287,6 +289,12 @@ struct MainView: View {
         }
         player.onMetadata = { video in playback.updateMetadata(video) }
         player.onRestoreVideo = { video in playback.select(video: video) }
+        player.onInlineWindow = {
+            guard selectedTab == 0, playback.current != nil else { return }
+            floating = true
+            player.setMiniPlayer(true)
+            selectedTab = settings.browsesAsGuest && accountSignedIn == false ? 4 : lastBrowseTab
+        }
         guard !didStart else { return }
         didStart = true
         #if DEBUG

@@ -10,7 +10,7 @@ final class IurubUITests: XCTestCase {
         app.launch()
     }
 
-    private func openPlayableClip() throws {
+    private func openPlayableClip(startPlaying: Bool = true) throws {
         app.terminate()
         let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "MovingBar", withExtension: "mp4"))
         app.launchEnvironment["IURUB_TEST_CLIP"] = try Data(contentsOf: file).base64EncodedString()
@@ -20,7 +20,7 @@ final class IurubUITests: XCTestCase {
         savedVideo.tap()
         let play = app.webViews.buttons["Riproduci la clip"]
         XCTAssertTrue(play.waitForExistence(timeout: 10))
-        play.tap()
+        if startPlaying { play.tap() }
     }
 
     func testSpeedButtonsControlActualVideoAndStopAtLimits() throws {
@@ -40,13 +40,19 @@ final class IurubUITests: XCTestCase {
     }
 
     func testRealPictureInPictureContinuesOnHomeScreen() throws {
-        try openPlayableClip()
+        try openPlayableClip(startPlaying: false)
         let pip = app.buttons["pictureInPicture"]
         XCTAssertTrue(pip.waitForExistence(timeout: 5))
         pip.tap()
         if !AVPictureInPictureController.isPictureInPictureSupported() {
-            XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 5))
-            throw XCTSkip("Questo simulatore non supporta la finestra di sistema. Verificato il messaggio di indisponibilità.")
+            let mini = app.buttons["miniPlayerExpand"]
+            XCTAssertTrue(mini.waitForExistence(timeout: 15))
+            XCTAssertFalse(app.alerts.firstMatch.exists)
+            capture("finestra-da-video-in-pausa")
+            mini.tap()
+            let seconds = app.webViews.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Secondi ' AND label != 'Secondi 0'")).firstMatch
+            XCTAssertTrue(seconds.waitForExistence(timeout: 6), "Finestra deve avviare davvero la clip, senza un tocco su Play")
+            return // The simulator verified only the in-app window, not system PiP.
         }
         let entered = NSPredicate(format: "label == %@", "Riporta il video nell’app")
         expectation(for: entered, evaluatedWith: pip)
@@ -661,6 +667,36 @@ final class IurubLiveUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["In corso"].isSelected)
         waitForLayout(in: app) { $0["titleVisible"] as? Bool == true }
         capture("playing-title-after-return", app: app)
+    }
+
+    func testWindowStartsPublicVideoWithoutTappingPlay() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_PLAYBACK_LIVE"] == "1", "Requires public YouTube playback")
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--playback-live"]
+        app.launch()
+        app.open(try XCTUnwrap(URL(string: "iurub://open?url=https%3A%2F%2Fm.youtube.com%2Fwatch%3Fv%3Daqz-KE-bpKQ%26t%3D30s")))
+        let pip = app.buttons["pictureInPicture"]
+        XCTAssertTrue(pip.waitForExistence(timeout: 25))
+        pip.tap()
+        let window = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            app.buttons["miniPlayerExpand"].exists || (pip.exists && pip.label == "Riporta il video nell’app")
+        }, object: nil)
+        let result = XCTWaiter.wait(for: [window], timeout: 22)
+        if result != .completed { capture("public-window-diagnostic", app: app) }
+        XCTAssertEqual(result, .completed)
+        func position() -> Double? {
+            let status = app.staticTexts["livePlaybackStatus"]
+            guard status.exists, let data = status.label.data(using: .utf8),
+                  let record = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  (record["duration"] as? Double ?? 0) > 90 else { return nil }
+            return record["position"] as? Double
+        }
+        let start = position() ?? 30
+        let playing = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in (position() ?? 0) >= start + 3 }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [playing], timeout: 18), .completed)
+        XCTAssertFalse(app.alerts.firstMatch.exists)
+        capture("youtube-finestra-con-un-tocco", app: app)
     }
 
     func testBackgroundOnPublicYouTubeVideo() throws {

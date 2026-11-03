@@ -44,7 +44,7 @@ Il progresso viene registrato circa ogni cinque secondi durante la riproduzione,
 
 ## Finestra video e velocità
 
-La barra **In linea** tiene a portata di mano **Salva**, **Finestra**, i controlli di velocità e **Riassunto**. Cambiando tab durante la riproduzione, il video resta in finestra. Se il PiP di sistema non è disponibile, iurub mostra lo stesso player in miniatura sopra la tab aperta. Tocca la miniatura per espanderla o la × per fermarla.
+La barra **In linea** tiene a portata di mano **Salva**, **Finestra**, i controlli di velocità e **Riassunto**. Tocca **Finestra** anche a video fermo: iurub avvia il player e chiede la finestra di sistema; se il sistema non la offre, apre una miniatura nella tab precedente. Cambiando tab durante la riproduzione, il video resta in finestra. Se il PiP di sistema non è disponibile, iurub mostra lo stesso player in miniatura sopra la tab aperta. Tocca la miniatura per espanderla o la × per fermarla.
 
 Quando lasci iurub per la Home, l’app chiede la finestra di sistema per il video già avviato. Se WebKit sospende il video mentre entra in PiP, iurub chiede una sola ripresa collegata a quel passaggio. La finestra di sistema dipende dal dispositivo e dal sito. Puoi rientrare nel player da **In corso**. Una chiusura forzata termina la riproduzione.
 
