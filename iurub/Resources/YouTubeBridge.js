@@ -91,6 +91,7 @@
       html.iurub-watch-later ytm-mobile-topbar-renderer .mobile-topbar-header { background:var(--yt-spec-base-background,var(--iurub-toolbar-background)) !important; color:var(--yt-spec-text-primary,var(--iurub-toolbar-foreground)) !important; }
       html.iurub-watch-later ytm-mobile-topbar-renderer .mobile-topbar-title { display:block !important; opacity:1 !important; visibility:visible !important; }
       /* Only the site's back affordance on the two tab roots. Search has its own back control. */
+      html.iurub-list-root ytm-mobile-topbar-renderer .mobile-topbar-header:has(> .non-search-mode .mobile-topbar-title) > button.mobile-topbar-back-arrow,
       html.iurub-list-root ytm-mobile-topbar-renderer .non-search-mode :is(.mobile-topbar-back-arrow, .mobile-topbar-back-arrow-button, [aria-label="Indietro" i], [aria-label="Torna indietro" i], [aria-label="Back" i], [aria-label="Go back" i]),
       html.iurub-list-root ytm-mobile-topbar-renderer .non-search-mode > :is(button, [role="button"], a, :has(> button)):has(+ .mobile-topbar-title) { display:none !important; }
       html.iurub-watch-later ytm-mobile-topbar-renderer .mobile-topbar-title,

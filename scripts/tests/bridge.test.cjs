@@ -373,7 +373,7 @@ test('hides the entire YouTube bottom navigation, including after dynamic update
 });
 
 test('only the root back arrow disappears on Watch Later and History, not Search or another playlist', async () => {
-  const html = '<ytm-mobile-topbar-renderer><header><div class="mobile-topbar-header-content non-search-mode"><div class="mobile-topbar-back-arrow"><button aria-label="Indietro">←</button></div><h1 class="mobile-topbar-title">Titolo</h1><button aria-label="Cerca">Cerca</button><button aria-label="Opzioni">Menu</button></div><div class="search-mode"><button aria-label="Indietro">←</button></div></header></ytm-mobile-topbar-renderer>';
+  const html = '<ytm-mobile-topbar-renderer><header class="mobile-topbar-header"><button class="mobile-topbar-back-arrow" aria-label="Indietro">←</button><div class="mobile-topbar-header-content non-search-mode"><h1 class="mobile-topbar-title">Titolo</h1><button aria-label="Cerca">Cerca</button><button aria-label="Opzioni">Menu</button></div><div class="search-mode"><button aria-label="Indietro">←</button></div></header></ytm-mobile-topbar-renderer>';
   const {dom,d,w}=await setup(html,'https://m.youtube.com/playlist?list=WL');
   try {
     const display = selector => w.getComputedStyle(d.querySelector(selector)).display;
