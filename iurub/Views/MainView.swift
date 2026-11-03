@@ -13,6 +13,9 @@ struct MainView: View {
     @State private var selectedTab = 1
     @State private var showingSettings = false
     @State private var didStart = false
+    @State private var accountSignedIn: Bool?
+    @State private var showingSignIn = false
+    @State private var awaitingAccount = true
     #if DEBUG
     @State private var watchLayout = ""
     #endif
@@ -25,7 +28,95 @@ struct MainView: View {
 
     private var sessions: [BrowserSession] { [player, watchLater, subscriptions, history, home] }
 
+    private var welcomesGuest: Bool { accountSignedIn == false && !settings.browsesAsGuest }
+    private var checksAccount: Bool {
+        awaitingAccount && watchLater.loadError == nil && !watchLater.pageHost.hasPrefix("consent.")
+    }
+
     var body: some View {
+        ZStack {
+            if welcomesGuest {
+                WelcomeView(signIn: { showingSignIn = true }, explore: {
+                    settings.browsesAsGuest = true
+                    selectTab(4)
+                })
+            } else if checksAccount {
+                ZStack { Theme.background; BrandLoader(label: "Apertura di iurub") }.ignoresSafeArea()
+            } else {
+                appTabs
+                if sessions[selectedTab].isLoading && sessions[selectedTab].loadError == nil &&
+                    !(settings.browsesAsGuest && accountSignedIn == false && [1, 2, 3].contains(selectedTab)) {
+                    BrandLoader().frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .ignoresSafeArea().allowsHitTesting(false)
+                }
+            }
+        }
+        .task {
+            // Consent, offline responses and unfamiliar page layouts must remain usable.
+            try? await Task.sleep(for: .seconds(4))
+            if !Task.isCancelled { awaitingAccount = false }
+        }
+        .sheet(isPresented: $showingSignIn) { YouTubeSignInView(completed: finishSignIn) }
+        .sheet(isPresented: $showingSettings) { SettingsView() }
+        .onAppear(perform: start)
+        .onReceive(settings.$shortsEnabled) { enabled in
+            configureSessions(shortsEnabled: enabled)
+        }
+        .onReceive(settings.$automaticSummariesEnabled) { enabled in
+            if !enabled { summaries.discardQueuedPrefetches() }
+        }
+        .onChange(of: youtubeMembership) { _, _ in
+            configureSessions(shortsEnabled: settings.shortsEnabled)
+        }
+        .onChange(of: settings.shortsEnabled) { _, _ in
+            if selectedTab == 0 { ensurePlayer() }
+        }
+        .onChange(of: selectedTab) { old, tab in
+            if accountContextNeedsRefresh {
+                accountContextNeedsRefresh = false
+                resetMembershipHints()
+                if tab != 1 { watchLater.openStartPage() }
+            }
+            if old == 0 { player.captureProgress() }
+            for (index, session) in sessions.enumerated() where index != tab && session !== player {
+                session.pauseWhenHidden()
+            }
+            if settings.browsesAsGuest && accountSignedIn == false && [1, 2, 3].contains(tab) { return }
+            if tab == 0 {
+                floating = false
+                player.returnToWatchPage()
+                player.returnFromPictureInPicture()
+                ensurePlayer()
+            }
+            else if tab == 1 { watchLater.openStartPage() }
+            else if tab == 3 && old != 0 { history.openStartPage() }
+            else { sessions[tab].startIfNeeded() }
+        }
+        .onChange(of: showingSettings) { _, showing in if showing { pauseAll() } }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                player.endBackgroundHandoff()
+                player.captureProgress()
+            } else if phase == .inactive || phase == .background {
+                player.captureProgress()
+                if (selectedTab == 0 || floating) && !showingSettings { player.prepareBackgroundPlayback(leavingApp: true) }
+            }
+        }
+        #if os(iOS)
+        .onReceive(NotificationCenter.default.publisher(for: UIScene.willDeactivateNotification)) { _ in
+            // Ask while the video is still attached, before WebKit can suspend the inline element.
+            if (selectedTab == 0 || floating) && !showingSettings { player.prepareBackgroundPlayback(leavingApp: true) }
+        }
+        #endif
+        .onOpenURL { url in
+            guard url.scheme == "iurub", url.host == "open",
+                  let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "url" })?.value,
+                  let sourceURL = URL(string: raw), let link = VideoLink.parse(raw) else { return }
+            openInProgress(SavedVideo(link: link), startAt: PlaybackRecord.startTime(in: sourceURL))
+        }
+    }
+
+    private var appTabs: some View {
         TabView(selection: Binding(get: { selectedTab }, set: selectTab)) {
             inProgressTab
                 .tabItem { Label("In corso", systemImage: "play.circle.fill") }.tag(0)
@@ -76,62 +167,6 @@ struct MainView: View {
             }
         }
         #endif
-        .sheet(isPresented: $showingSettings) { SettingsView() }
-        .onAppear(perform: start)
-        .onReceive(settings.$shortsEnabled) { enabled in
-            configureSessions(shortsEnabled: enabled)
-        }
-        .onReceive(settings.$automaticSummariesEnabled) { enabled in
-            if !enabled { summaries.discardQueuedPrefetches() }
-        }
-        .onChange(of: youtubeMembership) { _, _ in
-            configureSessions(shortsEnabled: settings.shortsEnabled)
-        }
-        .onChange(of: settings.shortsEnabled) { _, _ in
-            if selectedTab == 0 { ensurePlayer() }
-        }
-        .onChange(of: selectedTab) { old, tab in
-            if accountContextNeedsRefresh {
-                accountContextNeedsRefresh = false
-                resetMembershipHints()
-                if tab != 1 { watchLater.openStartPage() }
-            }
-            if old == 0 { player.captureProgress() }
-            for (index, session) in sessions.enumerated() where index != tab && session !== player {
-                session.pauseWhenHidden()
-            }
-            if tab == 0 {
-                floating = false
-                player.returnToWatchPage()
-                player.returnFromPictureInPicture()
-                ensurePlayer()
-            }
-            else if tab == 1 { watchLater.openStartPage() }
-            else if tab == 3 && old != 0 { history.openStartPage() }
-            else { sessions[tab].startIfNeeded() }
-        }
-        .onChange(of: showingSettings) { _, showing in if showing { pauseAll() } }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
-                player.endBackgroundHandoff()
-                player.captureProgress()
-            } else if phase == .inactive || phase == .background {
-                player.captureProgress()
-                if (selectedTab == 0 || floating) && !showingSettings { player.prepareBackgroundPlayback(leavingApp: true) }
-            }
-        }
-        #if os(iOS)
-        .onReceive(NotificationCenter.default.publisher(for: UIScene.willDeactivateNotification)) { _ in
-            // Ask while the video is still attached, before WebKit can suspend the inline element.
-            if (selectedTab == 0 || floating) && !showingSettings { player.prepareBackgroundPlayback(leavingApp: true) }
-        }
-        #endif
-        .onOpenURL { url in
-            guard url.scheme == "iurub", url.host == "open",
-                  let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "url" })?.value,
-                  let sourceURL = URL(string: raw), let link = VideoLink.parse(raw) else { return }
-            openInProgress(SavedVideo(link: link), startAt: PlaybackRecord.startTime(in: sourceURL))
-        }
     }
 
     @ViewBuilder private var inProgressTab: some View {
@@ -170,7 +205,20 @@ struct MainView: View {
 
     private func browserTab(_ session: BrowserSession) -> some View {
         NavigationStack {
-            BrowserPane(session: session, extendsToBottom: true)
+            Group {
+                if settings.browsesAsGuest && accountSignedIn == false && session.role == .browse && session !== home {
+                    ContentUnavailableView {
+                        Label("Accedi a YouTube", systemImage: "person.crop.circle")
+                    } description: {
+                        Text("Collega il tuo account per vedere i contenuti di questa sezione.")
+                    } actions: {
+                        Button("Accedi a YouTube") { showingSignIn = true }
+                            .buttonStyle(.borderedProminent).accessibilityIdentifier("welcomeSignIn")
+                    }
+                } else {
+                    BrowserPane(session: session, extendsToBottom: true)
+                }
+            }
                 .safeAreaInset(edge: .top, spacing: 0) {
                     if session === player, let error = playback.errorMessage {
                         Text(error).font(.caption).padding(10).frame(maxWidth: .infinity)
@@ -189,7 +237,7 @@ struct MainView: View {
                     }
                     ToolbarItemGroup(placement: .primaryAction) {
                         SettingsButton { showingSettings = true }
-                        Button(action: session.openAccount) { Image(systemName: "person.crop.circle").frame(width: 28, height: 32) }
+                        Button(action: { if accountSignedIn == false { showingSignIn = true } else { session.openAccount() } }) { Image(systemName: "person.crop.circle").frame(width: 28, height: 32) }
                             .accessibilityLabel("Tu")
                             .accessibilityIdentifier("profileButton")
                     }
@@ -215,6 +263,17 @@ struct MainView: View {
             session.onYouTubeSaved = { video in
                 guard settings.automaticSummariesEnabled else { return }
                 summaries.prefetch(video: video)
+            }
+            session.onSignInRequest = { showingSignIn = true }
+            session.onSessionStatus = { signed in
+                guard !showingSignIn, session === sessions[selectedTab] || (accountSignedIn == nil && session === watchLater) else { return }
+                awaitingAccount = false
+                if accountSignedIn != signed {
+                    if accountSignedIn == true { resetMembershipHints() }
+                    accountSignedIn = signed
+                    if signed { settings.browsesAsGuest = false }
+                    else if settings.browsesAsGuest && selectedTab == 1 && !home.hasLoaded { selectTab(4) }
+                }
             }
             session.onAccountContextChanged = {
                 accountContextNeedsRefresh = true
@@ -248,6 +307,17 @@ struct MainView: View {
         } else {
             watchLater.startIfNeeded()
         }
+    }
+
+    private func finishSignIn() {
+        guard showingSignIn else { return }
+        showingSignIn = false
+        accountSignedIn = true
+        awaitingAccount = false
+        settings.browsesAsGuest = false
+        resetMembershipHints()
+        for session in [subscriptions, history, home] where session.hasLoaded { session.openStartPage() }
+        if selectedTab == 1 { watchLater.openStartPage() } else { selectTab(1) }
     }
 
     private func configureSessions(shortsEnabled: Bool) {
@@ -383,9 +453,6 @@ private struct PersistentVideoSurface: View {
                     .clipped()
                     .allowsHitTesting(inline)
                     .accessibilityHidden(!inline)
-                if inline && session.isLoading {
-                    ProgressView().padding(8).background(.regularMaterial, in: Capsule()).frame(maxWidth: .infinity).padding(.top, 8)
-                }
                 if small {
                     Button(action: expand) { Color.clear.contentShape(Rectangle()) }
                         .accessibilityLabel("Espandi video").accessibilityIdentifier("miniPlayerExpand")

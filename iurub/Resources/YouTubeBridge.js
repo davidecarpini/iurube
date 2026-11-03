@@ -360,6 +360,7 @@
   }
   async function saveThroughYouTube(card, video, button, requestedState) {
     if (savingToAccount || !video || !VIDEO_ID.test(video.id || '') || (!shortsEnabled && video.isShort)) return;
+    if (window.ytcfg?.get?.('LOGGED_IN') === false) { post('requestSignIn'); return; }
     savingToAccount = true;
     const desired = typeof requestedState === 'boolean' ? requestedState : accountMembership.get(video.id) !== true;
     if (button) button.disabled = true;

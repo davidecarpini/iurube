@@ -1,3 +1,11 @@
+# iurub 1.8.0 · build 12
+
+**Ingresso.** Una sessione YouTube già autenticata apre i suoi contenuti. Un ospite vede «Accedi a YouTube» e «Esplora senza accedere». La seconda scelta viene ricordata; da Salvati, Iscrizioni, Cronologia e Tu si può avviare l’accesso in seguito. La finestra di accesso mostra il dominio e si chiude quando YouTube conferma la sessione. Un eventuale accesso nel browser esterno resta separato dall’app.
+
+La splash mostra il marchio di iurub all’avvio. Durante il caricamento l’anello resta al centro e rispetta l’impostazione Riduci movimento. Il rapporto dettagliato e le schermate per questa versione sono negli output locali, in `iurub-verifica.md`.
+
+---
+
 # iurub 1.7.0 · build 11
 
 **Esplora e Salvati.** Il menu originale e il segnalibro condividono la riga del titolo. Il segnalibro occupa un proprio spazio a destra dei tre puntini. In Esplora, sul sito YouTube in italiano, il simulatore ha verificato che entrambi fossero toccabili, allineati e senza sovrapposizioni. Il salvataggio e la rimozione sono stati provati con la playlist di test.

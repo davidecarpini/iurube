@@ -1100,3 +1100,16 @@ test('a delayed comments entry opens without selecting adjacent carousel actions
     assert.deepEqual(clicks, ['Commenti']);
   } finally { dom.window.close(); }
 });
+
+test('saving a video as a guest requests sign-in without changing the playlist', async () => {
+  const {dom, d, messages} = await setup(undefined, 'https://m.youtube.com/', {saveDestination:'youtube'}, w => {
+    w.ytcfg = {get: name => name === 'LOGGED_IN' ? false : undefined};
+  });
+  try {
+    const bookmark = d.querySelector('.iurub-save');
+    bookmark.click();
+    assert.equal(messages.filter(m => m.type === 'requestSignIn').length, 1);
+    assert.equal(bookmark.getAttribute('aria-pressed'), 'false');
+    assert.ok(!messages.some(m => m.type === 'youtubeSaveResult'));
+  } finally { dom.window.close(); }
+});

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="23504" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" launchScreen="YES" useTraitCollections="YES" colorMatched="YES" initialViewController="IUR-ub-001">
+    <device id="retina6_12" orientation="portrait" appearance="light"/>
+    <dependencies>
+        <deployment identifier="iOS"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="23506"/>
+        <capability name="Named colors" minToolsVersion="9.0"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+    <scenes>
+        <scene sceneID="IUR-ub-002">
+            <objects>
+                <viewController id="IUR-ub-001" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="IUR-ub-003">
+                        <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
+                        <subviews>
+                            <imageView userInteractionEnabled="NO" contentMode="scaleAspectFit" image="EntryMark" translatesAutoresizingMaskIntoConstraints="NO" id="IUR-ub-004">
+                                <rect key="frame" x="152.5" y="382" width="88" height="88"/>
+                                <constraints>
+                                    <constraint firstAttribute="width" constant="88" id="IUR-ub-005"/>
+                                    <constraint firstAttribute="height" constant="88" id="IUR-ub-006"/>
+                                </constraints>
+                            </imageView>
+                        </subviews>
+                        <color key="backgroundColor" name="LaunchBackground"/>
+                        <constraints>
+                            <constraint firstItem="IUR-ub-004" firstAttribute="centerX" secondItem="IUR-ub-003" secondAttribute="centerX" id="IUR-ub-007"/>
+                            <constraint firstItem="IUR-ub-004" firstAttribute="centerY" secondItem="IUR-ub-003" secondAttribute="centerY" id="IUR-ub-008"/>
+                        </constraints>
+                    </view>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="IUR-ub-009" sceneMemberID="firstResponder"/>
+            </objects>
+        </scene>
+    </scenes>
+    <resources>
+        <image name="EntryMark" width="88" height="88"/>
+        <namedColor name="LaunchBackground">
+            <color red="0.98" green="0.973" blue="0.961" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+        </namedColor>
+    </resources>
+</document>

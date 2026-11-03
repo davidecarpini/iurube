@@ -28,8 +28,8 @@ struct BrowserPane: View {
     var body: some View {
         browserContent
             .ignoresSafeArea(.container, edges: extendsToBottom && session.role != .player ? .bottom : [])
-            .overlay(alignment: .top) {
-                if session.isLoading && session.role != .player { ProgressView().padding(10).background(.regularMaterial, in: Capsule()).padding(.top, 8) }
+            .overlay {
+                if !extendsToBottom && session.isLoading { BrandLoader() }
             }
             .overlay {
                 if let error = session.loadError {
@@ -210,7 +210,7 @@ struct PlayerView: View {
 
 private struct IdentifiedURL: Identifiable { let id = UUID(); let url: URL }
 #if os(iOS)
-private struct SafariView: UIViewControllerRepresentable {
+struct SafariView: UIViewControllerRepresentable {
     let url: URL
     func makeUIViewController(context: Context) -> SFSafariViewController { SFSafariViewController(url: url) }
     func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}

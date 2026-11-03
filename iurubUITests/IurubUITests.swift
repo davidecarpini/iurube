@@ -518,7 +518,9 @@ final class IurubUITests: XCTestCase {
         capture("in-progress-restored")
         app.tabBars.buttons["Esplora"].tap()
         let secondVideo = app.webViews.staticTexts["Musica per concentrarsi"]
-        XCTAssertTrue(secondVideo.waitForExistence(timeout: 10))
+        let explored = secondVideo.waitForExistence(timeout: 10)
+        if !explored { capture("esplora-dopo-ripresa") }
+        XCTAssertTrue(explored, "La tab Esplora deve aprire il feed anche dopo la ripresa di un video")
         secondVideo.tap()
         XCTAssertTrue(app.webViews.staticTexts["Posizione: 0 s"].waitForExistence(timeout: 10), "A different video must not inherit the previous playhead")
         XCTAssertTrue(app.tabBars.buttons["In corso"].isSelected)
@@ -888,5 +890,81 @@ final class IurubLiveUITests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+}
+
+final class EntryUITests: XCTestCase {
+    private let app = XCUIApplication()
+
+    override func setUpWithError() throws { continueAfterFailure = false }
+
+    private func capture(_ name: String) {
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = name
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    func testGuestCanCancelBrowseAndConnectWithoutLosingTheAccountAtRelaunch() throws {
+        app.launchArguments = ["--ui-testing", "--reset-state", "--fixture", "--guest-fixture"]
+        app.launch()
+        let signIn = app.buttons["welcomeSignIn"]
+        XCTAssertTrue(signIn.waitForExistence(timeout: 10))
+        capture("ingresso-ospite")
+        signIn.tap()
+        XCTAssertTrue(app.buttons["closeSignIn"].waitForExistence(timeout: 5))
+        app.buttons["closeSignIn"].tap()
+        XCTAssertTrue(signIn.waitForExistence(timeout: 5))
+        app.buttons["welcomeExplore"].tap()
+        XCTAssertTrue(app.webViews.staticTexts["Musica per concentrarsi"].waitForExistence(timeout: 10))
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--fixture", "--guest-fixture"]
+        app.launch()
+        XCTAssertTrue(app.webViews.staticTexts["Musica per concentrarsi"].waitForExistence(timeout: 10))
+        app.tabBars.buttons["Salvati"].tap()
+        XCTAssertTrue(signIn.waitForExistence(timeout: 5))
+        signIn.tap()
+        let confirm = app.webViews.buttons["Conferma account di prova"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 6))
+        confirm.tap()
+        XCTAssertTrue(app.buttons["closeSignIn"].waitForNonExistence(timeout: 12), "Dismiss only after YouTube confirms the account")
+        let signedRow = app.webViews["youtube-watchLater"].staticTexts["Video già salvato nell’account"]
+        XCTAssertTrue(signedRow.waitForExistence(timeout: 8))
+        XCTAssertTrue(signedRow.isHittable)
+        XCTAssertFalse(signIn.exists)
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.webViews.staticTexts["Video già salvato nell’account"].waitForExistence(timeout: 8))
+        XCTAssertFalse(signIn.exists)
+    }
+
+    func testFreshYouTubeSessionReachesOfficialGoogleFormAndCanCancel() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_ENTRY_LIVE"] == "1")
+        app.launchArguments = ["--ui-testing", "--reset-state", "--guest-live"]
+        app.launch()
+        let signIn = app.buttons["welcomeSignIn"]
+        let reject = app.webViews.descendants(matching: .any).matching(NSPredicate(format: "label MATCHES[c] %@", "(Reject all|Rifiuta tutto|Rifiuta tutte le opzioni)")).firstMatch
+        if !signIn.waitForExistence(timeout: 8), reject.waitForExistence(timeout: 12) { reject.tap() }
+        XCTAssertTrue(signIn.waitForExistence(timeout: 22), "An unauthenticated YouTube session must show the invitation")
+        capture("benvenuto-youtube-reale")
+        signIn.tap()
+        let google = app.staticTexts["accounts.google.com"]
+        XCTAssertTrue(google.waitForExistence(timeout: 30))
+        let email = app.webViews.textFields.firstMatch
+        XCTAssertTrue(email.waitForExistence(timeout: 20), "The first-party sign-in identifier field must appear")
+        capture("accesso-google-reale")
+        app.buttons["closeSignIn"].tap()
+        XCTAssertTrue(signIn.waitForExistence(timeout: 5))
+        app.buttons["welcomeExplore"].tap()
+        XCTAssertTrue(app.tabBars.buttons["Esplora"].isSelected)
+    }
+
+    func testExistingLiveYouTubeSessionOpensSavedWithoutAnInvitation() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_ENTRY_LIVE"] == "1")
+        app.launchArguments = ["--ui-testing", "--reset-state"]
+        app.launch()
+        let row = app.webViews.descendants(matching: .any).matching(identifier: "Rimuovi da Guarda più tardi").firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 30))
+        XCTAssertFalse(app.buttons["welcomeSignIn"].exists)
     }
 }

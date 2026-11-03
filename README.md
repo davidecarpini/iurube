@@ -1,6 +1,12 @@
 # iurub
 
-Versione **1.7.0**. Client personale per iPhone, SwiftUI + WKWebView, iOS 17+. Nessun backend da configurare. I riassunti usano Gemini tramite la tua chiave OpenRouter, custodita nel Portachiavi.
+Versione **1.8.0**. Client personale per iPhone, SwiftUI + WKWebView, iOS 17+. Nessun backend da configurare. I riassunti usano Gemini tramite la tua chiave OpenRouter, custodita nel Portachiavi.
+
+## Primo accesso
+
+Se YouTube ti riconosce, iurub apre la tua lista o il video da riprendere. Se sei ospite, tocca **Accedi a YouTube**. L’accesso avviene sulla pagina di Google e iurub apre **Salvati** quando YouTube conferma la sessione.
+
+Puoi anche scegliere **Esplora senza accedere**. Iurub ricorda la scelta e puoi collegare l’account in seguito da **Tu** o da una delle sezioni personali. Se Google rifiuta l’accesso nell’app, il menu della schermata di accesso consente di ricominciare o di usare YouTube nel browser con la sua sessione separata.
 
 ## Navigazione
 
@@ -24,7 +30,7 @@ Il segnalibro diventa pieno quando iurub verifica che il video è in Guarda più
 
 In **Salvati** ogni riga ha un segnalibro pieno che puoi toccare per rimuovere il video. YouTube mostra la propria conferma, anche con miniatura e pulsante **Annulla**. Il segnalibro segue la conferma del sito anche se arriva in ritardo. Nelle impostazioni puoi abilitare gli Shorts, nascosti inizialmente, per tutte le sezioni.
 
-Tutte le sezioni condividono lo stesso archivio WebKit di cookie e sessione. Accedendo a YouTube nell’app, anche le altre pagine usano quell’account. Le modifiche alla playlist compaiono sugli altri dispositivi collegati allo stesso account. Se non hai effettuato l’accesso, YouTube mostra la sua schermata di login.
+Tutte le sezioni condividono lo stesso archivio WebKit di cookie e sessione. Accedendo a YouTube nell’app, anche le altre pagine usano quell’account. Le modifiche alla playlist compaiono sugli altri dispositivi collegati allo stesso account. Se non hai effettuato l’accesso, iurub presenta il benvenuto.
 
 Le sezioni informative Account YouTube e Archivio locale sono state rimosse dalle impostazioni. I precedenti dati locali non vengono cancellati dall’aggiornamento.
 
