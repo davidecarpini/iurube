@@ -193,6 +193,9 @@ struct MainView: View {
             .toolbar {
                 ToolbarItem(placement: .principal) { BrandMark() }
                 ToolbarItem(placement: .primaryAction) { SettingsButton { showingSettings = true } }
+                if playback.current != nil {
+                    ToolbarItem(placement: .appLeading) { closeVideoButton }
+                }
             }
             .inlineTitle()
         }
@@ -223,9 +226,12 @@ struct MainView: View {
                 .toolbar {
                     ToolbarItem(placement: .principal) { BrandMark() }
                     ToolbarItemGroup(placement: .appLeading) {
-                        Button(action: session.back) { Image(systemName: "chevron.left").frame(width: 28, height: 32) }
-                            .disabled(!session.canGoBack).accessibilityLabel("Indietro")
-                            .accessibilityIdentifier("backButton")
+                        if session === player { closeVideoButton }
+                        if session !== player || session.canGoBack {
+                            Button(action: session.back) { Image(systemName: "chevron.left").frame(width: 28, height: 32) }
+                                .disabled(!session.canGoBack).accessibilityLabel("Indietro")
+                                .accessibilityIdentifier("backButton")
+                        }
                         Button(action: session.reload) { Image(systemName: "arrow.clockwise").frame(width: 28, height: 32) }
                             .accessibilityLabel("Ricarica pagina")
                             .accessibilityIdentifier("refreshPage")
@@ -397,6 +403,23 @@ struct MainView: View {
         player.returnFromPictureInPicture()
     }
 
+    private var closeVideoButton: some View {
+        Button(action: closeCurrentVideo) { Image(systemName: "xmark").frame(width: 28, height: 32) }
+            .accessibilityLabel("Chiudi video").accessibilityIdentifier("closeCurrentVideo")
+    }
+
+    private func closeCurrentVideo() {
+        let token = UUID()
+        openingVideoToken = token
+        player.pause()
+        player.captureProgress {
+            guard openingVideoToken == token else { return }
+            floating = false
+            player.discardVideo()
+            playback.clearCurrent()
+        }
+    }
+
     private func pauseAll() {
         for session in sessions where session !== player || !floating { session.pauseWhenHidden() }
     }
@@ -443,6 +466,7 @@ private struct PersistentVideoSurface: View {
             let scale = small ? rect.width / max(1, page.width) : 1
             ZStack(alignment: .topTrailing) {
                 YouTubeWebView(session: session, hidesWebAccessibility: !inline)
+                    .id(ObjectIdentifier(session.webView))
                     .frame(width: page.width, height: page.height)
                     .scaleEffect(scale, anchor: .topLeading)
                     .frame(width: rect.width, height: rect.height, alignment: .topLeading)

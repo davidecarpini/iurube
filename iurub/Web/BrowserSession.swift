@@ -100,6 +100,10 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         self.startPage = startPage
         self.saveDestination = saveDestination
         super.init()
+        makeWebView()
+    }
+
+    private func makeWebView() {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
         #if DEBUG
@@ -135,13 +139,13 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         #endif
         observers = [
             webView.observe(\.isLoading, options: [.new]) { [weak self] view, _ in
-                Task { @MainActor [weak self] in self?.isLoading = view.isLoading }
+                Task { @MainActor [weak self] in if self?.webView === view { self?.isLoading = view.isLoading } }
             },
             webView.observe(\.canGoBack, options: [.new]) { [weak self] view, _ in
-                Task { @MainActor [weak self] in self?.canGoBack = view.canGoBack }
+                Task { @MainActor [weak self] in if self?.webView === view { self?.canGoBack = view.canGoBack } }
             },
             webView.observe(\.url, options: [.new]) { [weak self] view, _ in
-                Task { @MainActor [weak self] in self?.urlDidChange(view.url) }
+                Task { @MainActor [weak self] in if self?.webView === view { self?.urlDidChange(view.url) } }
             }
         ]
         installScripts()
@@ -512,6 +516,35 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         webView.evaluateJavaScript("window.iurub?.pause();", completionHandler: nil)
     }
 
+    /// Discard the watch document and its back stack, but keep the shared YouTube session.
+    func discardVideo() {
+        observers.removeAll()
+        webView.navigationDelegate = nil
+        webView.uiDelegate = nil
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "iurub")
+        webView.stopLoading()
+        webView.pauseAllMediaPlayback(completionHandler: nil)
+        webView.closeAllMediaPresentations(completionHandler: {})
+        navigationGeneration = UUID()
+        playbackSession = UUID().uuidString
+        activePlaybackID = nil
+        pendingHistoryAdoption = nil
+        resumeTarget = nil
+        lastPlayback = nil
+        departingPlayingID = nil
+        currentVideo = nil
+        mediaRate = nil
+        isDetached = false
+        isPlaying = false
+        videoEnded = false
+        isLoading = false
+        canGoBack = false
+        hasLoaded = false
+        loadError = nil
+        notice = nil
+        makeWebView()
+    }
+
     func setMiniPlayer(_ enabled: Bool) {
         webView.evaluateJavaScript("window.iurub?.setMiniPlayer(\(enabled));", completionHandler: nil)
     }
@@ -629,6 +662,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     fileprivate func receive(_ message: WKScriptMessage) {
+        guard message.webView === webView else { return }
         #if DEBUG
         let args = ProcessInfo.processInfo.arguments
         if role == .signIn, (args.contains("--fixture") || args.contains("--live-login-return")), message.frameInfo.isMainFrame,

@@ -74,6 +74,33 @@ final class IurubUITests: XCTestCase {
         XCTAssertEqual(restored, .completed, "Riaprendo In corso il video deve rientrare nel player")
     }
 
+    func testCloseVideoPreservesResumePointButDoesNotReopenAtLaunch() throws {
+        let saved = app.webViews.staticTexts["Video già salvato nell’account"]
+        XCTAssertTrue(saved.waitForExistence(timeout: 10))
+        saved.tap()
+        let advance = app.webViews.buttons["Avanza a 42 secondi"]
+        XCTAssertTrue(advance.waitForExistence(timeout: 10))
+        advance.tap()
+        XCTAssertTrue(app.webViews.staticTexts["Posizione: 42 s"].waitForExistence(timeout: 5))
+        let close = app.buttons["closeCurrentVideo"]
+        XCTAssertTrue(close.isHittable)
+        capture("chiudi-video-in-corso")
+        close.tap()
+        XCTAssertTrue(app.staticTexts["Un video alla volta"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["pictureInPicture"].exists)
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--fixture"]
+        app.launch()
+        XCTAssertTrue(saved.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.tabBars.buttons["Salvati"].isSelected)
+        app.tabBars.buttons["In corso"].tap()
+        XCTAssertTrue(app.staticTexts["Un video alla volta"].waitForExistence(timeout: 5))
+        capture("in-corso-dopo-chiusura")
+        app.buttons["inProgressAction"].tap()
+        saved.tap()
+        XCTAssertTrue(app.webViews.staticTexts["Posizione: 42 s"].waitForExistence(timeout: 10))
+    }
+
     func testPlayingVideoFloatsAcrossTabsAndKeepsItsPlayhead() throws {
         try openPlayableClip()
         let clock = app.webViews.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Secondi '")).firstMatch
@@ -786,9 +813,8 @@ final class IurubLiveUITests: XCTestCase {
                 XCTAssertTrue(app.buttons["backButton"].isEnabled)
                 app.buttons["backButton"].tap()
                 XCTAssertTrue(app.buttons["summaryButton"].waitForExistence(timeout: 30))
-                let root = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == false"), object: app.buttons["backButton"])
-                XCTAssertEqual(XCTWaiter.wait(for: [root], timeout: 10), .completed,
-                               "Back must traverse the existing history instead of appending another video page")
+                XCTAssertTrue(app.buttons["backButton"].waitForNonExistence(timeout: 10),
+                              "The root of the player has Close instead of Back")
                 let resumed = try XCTUnwrap(currentRecord()?["position"] as? Double)
                 XCTAssertEqual(resumed, 8, accuracy: 1)
                 capture("youtube-player-after-back", app: app)
