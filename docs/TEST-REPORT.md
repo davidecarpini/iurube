@@ -8,6 +8,8 @@
 
 **Verifica del 3 novembre 2026.** Superati 63 test JavaScript, 48 test Swift e 7 prove di interfaccia sul simulatore iPhone Air, iOS 27.2.
 
+**Disponibilità della build 14.** Il 03/11/2026, Apple ha ricevuto l’archivio alle 18:12 e TestFlight ha confermato alle 18:14 (ora italiana) che il tester interno poteva installarlo. [App Store Connect](https://appstoreconnect.apple.com/apps/6829671295/testflight/ios) · [Sorgenti 7955f5d](https://github.com/davidecarpini/iurube/commit/7955f5dee782f35ff1db5f6dc650ff6f4040d61b).
+
 ---
 
 # iurub 1.8.1 · build 13
