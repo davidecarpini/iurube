@@ -1,3 +1,13 @@
+# iurub 1.10.1 · build 16
+
+**Chat e tastiera.** Aprire il campo per una domanda non riposiziona la conversazione. Anche quando la tastiera riduce lo spazio o la bozza va a capo, il paragrafo in lettura resta fermo. Inviare una domanda continua a portare al nuovo scambio.
+
+**Verifica del 4 novembre 2026.** Sul simulatore iPhone Air (iOS 27.2) la build precedente spostava il testo di circa 222 punti all’apertura della tastiera. Con un riassunto di 30 paragrafi la posizione relativa del testo è rimasta entro 3 punti dal riferimento prima e dopo la comparsa della tastiera, durante la digitazione e tornando a un passaggio precedente in una chat con più messaggi. Superati 48 test Swift e le due prove d’interfaccia della chat, compresa la riapertura dopo il riavvio. I dati di queste prove sono simulati e non hanno richiesto chiamate a OpenRouter. Risultati locali: `build/KeyboardRelease16.xcresult`.
+
+**TestFlight.** Apple ha ricevuto la build alle 00:23; alle 00:25 TestFlight ne ha confermato la disponibilità per il tester interno (ora italiana del 04/11/2026). [App Store Connect](https://appstoreconnect.apple.com/apps/6829671295/testflight/ios) · [Sorgenti della build](https://github.com/davidecarpini/iurube/commit/8dc1767e0dff79e7d801f98eb5393fb4a72e987e).
+
+---
+
 # iurub 1.10.0 · build 15
 
 **Riassunto dalle anteprime.** In Salvati, Esplora e Iscrizioni le scintille accanto al segnalibro aprono la chat del video senza avviarlo o cambiare la playlist. La prova ha aperto la conversazione da Salvati, fatto una domanda e ritrovato entrambe le risposte nel player dello stesso video. Un altro video ha aperto una conversazione distinta. Chiudere la chat ha lasciato selezionata la sezione di partenza.
