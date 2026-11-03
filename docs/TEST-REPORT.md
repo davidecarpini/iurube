@@ -1,3 +1,15 @@
+# iurub 1.9.0 · build 14
+
+**In corso.** La × in alto a sinistra chiude il video. Sul simulatore iPhone Air il video non si è riaperto dopo un riavvio e, scegliendolo nuovamente da Salvati, è ripartito da 42 secondi. Il marchio animato rimane all’avvio; durante la navigazione si vede solo il caricamento del sito.
+
+**Finestra.** La richiesta esplicita avvia il player, aspetta i primi fotogrammi e chiede il PiP di sistema. Se il sistema non lo offre, torna alla tab precedente con il video in miniatura. La prova con una clip H.264 in pausa e quella con “Big Buck Bunny” su YouTube hanno verificato che basta toccare Finestra e che la riproduzione prosegue. Il simulatore non supportava il PiP di sistema: la finestra fuori dall’app non è stata verificata su questa build.
+
+**OpenRouter.** La chiave deve essere inserita dall’utente in Impostazioni. Il vecchio import da file è stato rimosso e le vecchie credenziali non vengono riutilizzate. La guida apre le pagine ufficiali delle chiavi e dei crediti. Una prova con una chiave fittizia, senza richieste a pagamento, ha verificato il rifiuto di un formato errato, il salvataggio, la persistenza dopo il riavvio e la rimozione.
+
+**Verifica del 3 novembre 2026.** Superati 63 test JavaScript, 48 test Swift e 7 prove di interfaccia sul simulatore iPhone Air, iOS 27.2.
+
+---
+
 # iurub 1.8.1 · build 13
 
 **Accesso YouTube.** Se l’ultima pagina di Google non riesce a tornare al client, iurub controlla la sessione YouTube senza chiudere il modulo. Un account confermato apre Salvati automaticamente. Se serve riprovare, il pulsante verifica prima la sessione e riapre il modulo nell’app soltanto se necessario. L’opzione per continuare nel browser è stata rimossa.

@@ -1,6 +1,6 @@
 # iurub
 
-Versione **1.8.1**. Client personale per iPhone, SwiftUI + WKWebView, iOS 17+. Nessun backend da configurare. I riassunti usano Gemini tramite la tua chiave OpenRouter, custodita nel Portachiavi.
+Versione **1.9.0**. Client personale per iPhone, SwiftUI + WKWebView, iOS 17+. Nessun backend da configurare. I riassunti usano Gemini tramite la tua chiave OpenRouter, custodita nel Portachiavi.
 
 ## Primo accesso
 
@@ -12,7 +12,7 @@ Puoi anche scegliere **Esplora senza accedere**. Iurub ricorda la scelta e puoi 
 
 La barra inferiore ha cinque tab, in questo ordine:
 
-- **In corso**: il video aperto, con il punto di riproduzione conservato. La tab è sempre presente; senza un video mostra un invito ad aprire Salvati.
+- **In corso**: il video aperto, con il punto di riproduzione conservato. La × in alto a sinistra chiude il video e conserva il punto di riproduzione. La tab è sempre presente; senza un video mostra un invito ad aprire Salvati.
 - **Salvati**: Guarda più tardi del tuo account YouTube, aperto all’avvio quando non c’è un video incompleto da riprendere.
 - **Iscrizioni**: i video dei canali a cui sei iscritto.
 - **Cronologia**: la cronologia YouTube dell’account.
