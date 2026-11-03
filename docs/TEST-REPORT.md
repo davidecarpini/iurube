@@ -4,6 +4,8 @@
 
 La splash mostra il marchio di iurub all’avvio. Durante il caricamento l’anello resta al centro e rispetta l’impostazione Riduci movimento. Il rapporto dettagliato e le schermate per questa versione sono negli output locali, in `iurub-verifica.md`.
 
+**TestFlight.** Il 3 novembre 2026 Apple ha ricevuto la build alle 13:24, ha confermato la fine dell’elaborazione alle 13:25 e la disponibilità per il tester interno alle 13:26, ora italiana. [iurub in App Store Connect](https://appstoreconnect.apple.com/apps/6829671295/testflight/ios). Sorgenti della build: [6ae494f](https://github.com/davidecarpini/iurube/commit/6ae494f28d03c352427ed4a148fcba959be09638).
+
 ---
 
 # iurub 1.7.0 · build 11
