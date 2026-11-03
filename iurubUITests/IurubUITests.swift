@@ -531,6 +531,59 @@ final class IurubUITests: XCTestCase {
         capture("summary-restored")
     }
 
+    func testKeyboardKeepsReadingPositionInLongSummary() throws {
+        app.terminate()
+        app.launchArguments += ["--summary-fixture"]
+        app.launchEnvironment["IURUB_TEST_SUMMARY"] = (1...30).map {
+            "Punto \($0). Questo paragrafo descrive un esempio del video e spiega come applicarlo."
+        }.joined(separator: "\n\n")
+        app.launch()
+        let summary = app.buttons["summaryButton"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        summary.tap()
+        let replies = app.staticTexts.matching(identifier: "summaryReply")
+        let reply = replies.element(boundBy: 0)
+        XCTAssertTrue(reply.waitForExistence(timeout: 10))
+        let conversation = app.scrollViews["summaryConversation"]
+        // Compare the position of the same text relative to the top of its viewport.
+        func readingPosition() -> CGFloat { reply.frame.minY - conversation.frame.minY }
+        let start = readingPosition()
+        let from = conversation.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.75))
+        let to = conversation.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.35))
+        from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.25)
+        let before = readingPosition()
+        XCTAssertLessThan(before, start - 100, "The reader must already be partway through the summary.")
+        let input = app.descendants(matching: .any).matching(identifier: "summaryInput").firstMatch
+        let composerY = input.frame.minY
+        func assertKeyboardResizesChat() {
+            let resized = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                input.frame.minY < composerY - 100
+            }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [resized], timeout: 5), .completed,
+                           "The software keyboard must actually resize the chat.")
+        }
+        input.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(readingPosition(), before, accuracy: 3, "Focusing the field should keep the same passage in view.")
+        input.typeText("Quale esempio")
+        assertKeyboardResizesChat()
+        XCTAssertEqual(readingPosition(), before, accuracy: 3, "Opening the keyboard should keep the same passage in view.")
+        input.typeText(" del video spiega meglio questo concetto e come posso applicarlo?")
+        XCTAssertEqual(readingPosition(), before, accuracy: 3, "Wrapping the draft should keep the same passage in view.")
+        capture("summary-keyboard-reading-position")
+
+        app.buttons["sendSummaryQuestion"].tap()
+        XCTAssertTrue(replies.element(boundBy: 1).waitForExistence(timeout: 10))
+        // After a follow-up the normal destination is the end. Scroll back and
+        // make sure opening the keyboard there doesn't jump to the latest reply.
+        to.press(forDuration: 0.05, thenDragTo: from, withVelocity: .slow, thenHoldForDuration: 0.25)
+        let earlierPassage = readingPosition()
+        XCTAssertLessThan(earlierPassage, start - 100)
+        input.tap()
+        assertKeyboardResizesChat()
+        XCTAssertEqual(readingPosition(), earlierPassage, accuracy: 3, "Focusing must not jump to the end of an existing conversation.")
+    }
+
     func testVideoSummaryCanRetryAfterFailure() throws {
         app.terminate()
         app.launchArguments = ["--ui-testing", "--reset-state", "--fixture", "--summary-fixture", "--summary-error-once"]

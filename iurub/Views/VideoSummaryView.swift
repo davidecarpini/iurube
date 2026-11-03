@@ -126,9 +126,15 @@ struct VideoSummaryView: View {
                 .padding(20)
             }
             .scrollDismissesKeyboard(.interactively)
+            .accessibilityIdentifier("summaryConversation")
+            .transaction { transaction in
+                if #available(iOS 18, macOS 15, *) {
+                    transaction.scrollContentOffsetAdjustmentBehavior = .disabled
+                }
+            }
+            // Only conversation events move the reader; keyboard and composer resizing must not.
             .onChange(of: messages.count) { _, _ in scrollToLatest(proxy) }
             .onChange(of: isBusy) { _, _ in scrollToLatest(proxy) }
-            .onChange(of: inputFocused) { _, _ in scrollToLatest(proxy) }
             .onAppear { scrollToLatest(proxy) }
         }
     }
@@ -215,10 +221,11 @@ struct VideoSummaryView: View {
     }
 
     private func scrollToLatest(_ proxy: ScrollViewProxy) {
+        // A new summary already begins at the top. Setting an explicit target
+        // here lets the scroll view re-anchor that message when its height changes.
+        guard !messages.isEmpty, messages.count > 1 || !pendingQuestion.isEmpty else { return }
         withAnimation(.easeOut(duration: 0.2)) {
-            if messages.count == 1, let first = messages.first, pendingQuestion.isEmpty, !isBusy {
-                proxy.scrollTo(first.id, anchor: .top)
-            } else { proxy.scrollTo("latest", anchor: .bottom) }
+            proxy.scrollTo("latest", anchor: .bottom)
         }
     }
 

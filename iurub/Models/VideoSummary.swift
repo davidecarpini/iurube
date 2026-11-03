@@ -298,6 +298,9 @@ actor FixtureSummaryService: VideoSummarizing {
         try await Task.sleep(for: .milliseconds(350))
         if shouldFail { shouldFail = false; throw SummaryFailure.server }
         if question.isEmpty {
+            if let sample = ProcessInfo.processInfo.environment["IURUB_TEST_SUMMARY"] {
+                return SummaryReply(text: sample)
+            }
             return SummaryReply(text: "**L’idea centrale**\n\nIl video mostra come imparare con piccoli esercizi costanti.\n\n**Punti chiave**\n\n• Alterna pratica e ripasso.\n• Verifica quello che ricordi.\n• Parti da un obiettivo concreto.\n\n**Da provare**\n\nDedica dieci minuti al giorno a un esercizio.")
         }
         return SummaryReply(text: "Nel video si suggerisce di alternare pratica e ripasso. Un esempio pratico: dopo una spiegazione, chiudi gli appunti e prova a raccontarla con parole tue. Questo esempio è un approfondimento, non una citazione del video.")
