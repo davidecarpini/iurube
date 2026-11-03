@@ -2,6 +2,8 @@
 
 **Accesso YouTube.** Se l’ultima pagina di Google non riesce a tornare al client, iurub controlla la sessione YouTube senza chiudere il modulo. Un account confermato apre Salvati automaticamente. Se serve riprovare, il pulsante verifica prima la sessione e riapre il modulo nell’app soltanto se necessario. L’opzione per continuare nel browser è stata rimossa.
 
+**TestFlight.** Il 3 novembre 2026 Apple ha ricevuto la build alle 15:51 tramite Xcode Organizer. App Store Connect ha confermato la fine dell’elaborazione e TestFlight la disponibilità per il tester interno alle 15:54, ora italiana. [iurub in App Store Connect](https://appstoreconnect.apple.com/apps/6829671295/testflight/ios). Sorgenti della build: [e2034a0](https://github.com/davidecarpini/iurube/commit/e2034a0051eb132bbabbf9be09a4964de1879fff).
+
 ---
 
 # iurub 1.8.0 · build 12
