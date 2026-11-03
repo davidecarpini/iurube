@@ -569,8 +569,14 @@ final class IurubUITests: XCTestCase {
         assertKeyboardResizesChat()
         XCTAssertEqual(readingPosition(), before, accuracy: 3, "Opening the keyboard should keep the same passage in view.")
         input.typeText(" del video spiega meglio questo concetto e come posso applicarlo?")
+        // XCTest types through a temporary hardware keyboard. Wait for iOS to
+        // restore the software keyboard before measuring or tapping the composer.
+        assertKeyboardResizesChat()
         XCTAssertEqual(readingPosition(), before, accuracy: 3, "Wrapping the draft should keep the same passage in view.")
-        capture("summary-keyboard-reading-position")
+        let evidence = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        evidence.name = "summary-keyboard-reading-position"
+        evidence.lifetime = .keepAlways
+        add(evidence)
 
         app.buttons["sendSummaryQuestion"].tap()
         XCTAssertTrue(replies.element(boundBy: 1).waitForExistence(timeout: 10))
