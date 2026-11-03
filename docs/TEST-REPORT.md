@@ -1,3 +1,9 @@
+# iurub 1.8.1 · build 13
+
+**Accesso YouTube.** Se l’ultima pagina di Google non riesce a tornare al client, iurub controlla la sessione YouTube senza chiudere il modulo. Un account confermato apre Salvati automaticamente. Se serve riprovare, il pulsante verifica prima la sessione e riapre il modulo nell’app soltanto se necessario. L’opzione per continuare nel browser è stata rimossa.
+
+---
+
 # iurub 1.8.0 · build 12
 
 **Ingresso.** Una sessione YouTube già autenticata apre i suoi contenuti. Un ospite vede «Accedi a YouTube» e «Esplora senza accedere». La seconda scelta viene ricordata; da Salvati, Iscrizioni, Cronologia e Tu si può avviare l’accesso in seguito. La finestra di accesso mostra il dominio e si chiude quando YouTube conferma la sessione. Un eventuale accesso nel browser esterno resta separato dall’app.

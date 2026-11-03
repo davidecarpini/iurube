@@ -9,7 +9,7 @@ import AVFAudio
 @MainActor
 final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
     enum SaveDestination: String { case device, youtube }
-    enum Role { case browse, player, signIn }
+    enum Role { case browse, player, signIn, sessionCheck }
     static let signInURL = URL(string: "https://m.youtube.com/signin?hl=it&next=%2Fplaylist%3Flist%3DWL")!
     // Google owns the sign-in pages. Only ordinary YouTube content can report
     // whether the current website session is signed in.
@@ -52,6 +52,16 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     var onYouTubeMembership: ((SavedVideo, Bool) -> Void)?
     var onYouTubeSaved: ((SavedVideo) -> Void)?
     @Published private(set) var signedIn: Bool?
+    @Published private(set) var checkingSignIn = false
+    private enum CheckPurpose { case passive, error(String), retry }
+    private var checkPurpose: CheckPurpose = .passive
+    private var accountCheck: BrowserSession?
+    private var checkDeadline: Task<Void, Never>?
+    private var checkResult: ((Bool?) -> Void)?
+    private var latestSignInNavigation: WKNavigation?
+    #if DEBUG
+    private var fixtureInterrupted = false
+    #endif
     @Published private(set) var pageHost = ""
     var onSessionStatus: ((Bool) -> Void)?
     var onSignInRequest: (() -> Void)?
@@ -183,6 +193,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
           if (location.protocol !== 'https:' || !['m.youtube.com','www.youtube.com','youtube.com'].includes(location.hostname)) return;
           let last;
           const report = () => {
+            if (location.pathname === '/signin' || location.pathname === '/signin/') return;
             const value = window.ytcfg?.get?.('LOGGED_IN');
             const header = document.querySelector('ytm-mobile-topbar-renderer, #masthead');
             const signed = typeof value === 'boolean' ? value :
@@ -203,7 +214,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         })()
         """
         controller.addUserScript(WKUserScript(source: statusScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
-        guard role != .signIn else { return }
+        guard role == .browse || role == .player else { return }
         guard let sourceURL = Bundle.main.url(forResource: "YouTubeBridge", withExtension: "js"),
               let source = try? String(contentsOf: sourceURL, encoding: .utf8) else {
             loadError = "I filtri di iurub non sono disponibili. Reinstalla l’app."
@@ -220,15 +231,87 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
     }
 
+    // A Google redirect can fail after YouTube has already accepted the session.
+    // Check Watch Later independently, without replacing the form or replaying a POST.
+    func verifySignIn() {
+        #if DEBUG
+        // The live regression test must inject the failed return before the positive probe.
+        if ProcessInfo.processInfo.arguments.contains("--live-login-return"), !fixtureInterrupted { return }
+        #endif
+        checkSignIn(.passive)
+    }
+    func retrySignIn() { checkSignIn(.retry) }
+
+    func cancelSignInCheck() {
+        checkDeadline?.cancel()
+        checkDeadline = nil
+        accountCheck?.checkResult = nil
+        accountCheck?.webView.stopLoading()
+        accountCheck = nil
+        checkingSignIn = false
+    }
+
+    private func checkSignIn(_ purpose: CheckPurpose) {
+        guard role == .signIn, signedIn != true else { return }
+        if accountCheck != nil {
+            switch purpose {
+            case .passive: break
+            case .error:
+                if case .retry = checkPurpose { break }
+                checkPurpose = purpose
+            case .retry: checkPurpose = purpose
+            }
+            return
+        }
+        checkPurpose = purpose
+        let probe = BrowserSession(startPage: .watchLater, role: .sessionCheck)
+        accountCheck = probe
+        checkingSignIn = true
+        probe.checkResult = { [weak self, weak probe] signed in
+            guard let self, let probe, self.accountCheck === probe else { return }
+            let reason = self.checkPurpose
+            self.cancelSignInCheck()
+            if signed == true {
+                self.loadError = nil
+                self.signedIn = true
+            } else {
+                switch reason {
+                case .passive: break // Never interrupt a form, passkey or verification code.
+                case .error(let message): self.loadError = message
+                case .retry: self.startSignIn() // Fresh GET in the same store, only if needed.
+                }
+            }
+        }
+        checkDeadline = Task { [weak probe] in
+            do { try await Task.sleep(for: .seconds(6)) } catch { return }
+            probe?.checkResult?(nil)
+        }
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("--fixture") {
+            if args.contains("--retry-login-return"), fixtureInterrupted {
+                switch purpose {
+                case .retry: probe.loadFixture()
+                default: probe.checkResult?(nil) // Service temporarily unavailable until the manual retry.
+                }
+            } else { probe.loadFixture() }
+            return
+        }
+        #endif
+        let request = URLRequest(url: StartPage.watchLater.url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 6)
+        probe.webView.load(request)
+    }
+
     func startSignIn() {
         guard role == .signIn else { return }
+        cancelSignInCheck()
         signedIn = nil
         loadError = nil
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--fixture") {
+        if ProcessInfo.processInfo.arguments.contains("--fixture") || ProcessInfo.processInfo.arguments.contains("--live-login-return") {
             let page = "<meta name='viewport' content='width=device-width,initial-scale=1'><button onclick=\"window.webkit.messageHandlers.iurub.postMessage({type:'fixtureSignIn'})\">Conferma account di prova</button>"
             hasLoaded = true
-            webView.loadHTMLString(page, baseURL: URL(string: "https://accounts.google.com/"))
+            latestSignInNavigation = webView.loadHTMLString(page, baseURL: URL(string: "https://accounts.google.com/"))
             return
         }
         #endif
@@ -287,7 +370,8 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         loadError = nil
         lastURL = url
         isLoading = true
-        webView.load(URLRequest(url: url))
+        let navigation = webView.load(URLRequest(url: url, timeoutInterval: role == .signIn ? 25 : 60))
+        if role == .signIn { latestSignInNavigation = navigation }
     }
 
     func loadVideo(_ video: SavedVideo, position: Double) {
@@ -510,9 +594,10 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     private func urlDidChange(_ url: URL?) {
         pageHost = url?.host?.lowercased() ?? ""
+        if role == .sessionCheck { return }
         guard role != .signIn else {
             if let url, pageHost == "accounts.google.com", url.path.lowercased().contains("deniedsignin") || url.path.lowercased().contains("disallowed_useragent") {
-                loadError = "Google non consente questo accesso da iurub."
+                checkSignIn(.error("Google non ha consentito questo accesso. Puoi riprovare qui in iurub."))
             }
             return
         }
@@ -545,11 +630,22 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     fileprivate func receive(_ message: WKScriptMessage) {
         #if DEBUG
-        if role == .signIn, ProcessInfo.processInfo.arguments.contains("--fixture"), message.frameInfo.isMainFrame,
+        let args = ProcessInfo.processInfo.arguments
+        if role == .signIn, (args.contains("--fixture") || args.contains("--live-login-return")), message.frameInfo.isMainFrame,
            message.frameInfo.securityOrigin.host == "accounts.google.com",
            (message.body as? [String: String])?["type"] == "fixtureSignIn" {
-            UserDefaults(suiteName: "it.davidecarpini.iurub.uitests")!.set(true, forKey: "fixtureSignedIn")
-            loadFixture(page: .watchLater)
+            if args.contains("--live-login-return") {
+                fixtureInterrupted = true
+                handle(URLError(.networkConnectionLost))
+                return
+            }
+            let failBefore = args.contains("--interrupt-before-login") && !fixtureInterrupted
+            if !failBefore { UserDefaults(suiteName: "it.davidecarpini.iurub.uitests")!.set(true, forKey: "fixtureSignedIn") }
+            if args.contains("--stalled-login-return") { return } // Google stays on the last page with no navigation callback.
+            if failBefore || args.contains("--interrupt-login-return") || args.contains("--retry-login-return") {
+                fixtureInterrupted = true
+                handle(URLError(.networkConnectionLost))
+            } else { loadFixture(page: .watchLater) }
             return
         }
         #endif
@@ -560,13 +656,15 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         if type == "youtubeSession" {
             guard Self.contentHosts.contains(message.frameInfo.securityOrigin.host),
                   let page = webView.url, page.host?.lowercased() == message.frameInfo.securityOrigin.host,
-                  role != .signIn || ["/", "/playlist", "/feed/library", "/feed/you"].contains(page.path),
+                  page.scheme == "https", page.path != "/signin",
                   let signed = body["signed"] as? Bool else { return }
+            if role == .sessionCheck { checkResult?(signed); return }
+            if role == .signIn, signed { cancelSignInCheck(); loadError = nil }
             signedIn = signed
             onSessionStatus?(signed)
             return
         }
-        guard role != .signIn else { return }
+        guard role == .browse || role == .player else { return }
         switch type {
         case "requestSignIn": onSignInRequest?()
         case "openVideo":
@@ -674,12 +772,22 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         let googleSignIn = host == "accounts.google.com" && ["/servicelogin", "/v3/signin", "/signin", "/accountchooser"].contains { url.path.lowercased().hasPrefix($0) }
         let accountPage = url.scheme == "https" && (googleSignIn ||
             (Self.contentHosts.contains(host) && url.path == "/signin"))
+        if role == .sessionCheck {
+            // Follow first-party cookie-transfer redirects, but never submit a form
+            // or leave the client. Reaching Google's identifier/challenge is a guest result.
+            let trusted = Self.contentHosts.contains(host) || ["accounts.youtube.com", "accounts.google.com"].contains(host)
+            let googleForm = host == "accounts.google.com" && ["/identifier", "/challenge/", "/accountchooser"].contains { url.path.lowercased().contains($0) }
+            if url.scheme == "https", trusted, navigationAction.request.httpMethod == "GET", !googleForm {
+                decisionHandler(.allow)
+            } else { decisionHandler(.cancel); checkResult?(googleForm ? false : nil) }
+            return
+        }
         if role == .signIn {
             // Follow the site's own first-party redirects and preserve POST requests.
             let allowed = url.scheme == "https" && (VideoLink.isYouTubeHost(host) ||
                 ["accounts.google.com", "consent.google.com", "www.google.com"].contains(host))
-            if !allowed { loadError = "Questo passaggio richiede un browser esterno." }
             decisionHandler(allowed ? .allow : .cancel)
+            if !allowed { checkSignIn(.error("Non è stato possibile completare il ritorno da Google. Puoi riprovare qui in iurub.")) }
             return
         }
         if accountPage, signedIn != true, onSignInRequest != nil {
@@ -727,20 +835,45 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         if navigationAction.targetFrame == nil { webView.load(navigationAction.request) }
         return nil
     }
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        if role == .signIn {
+            latestSignInNavigation = navigation
+            if case .error = checkPurpose { checkPurpose = .passive }
+            loadError = nil
+        }
+    }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        if role == .signIn, navigation !== latestSignInNavigation { return }
         loadError = nil
         urlDidChange(webView.url)
-        if role != .signIn, Self.contentHosts.contains(pageHost) {
+        if (role == .browse || role == .player), Self.contentHosts.contains(pageHost) {
             webView.evaluateJavaScript("window.iurub?.configure(\(configurationJSON));", completionHandler: nil)
         }
     }
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { handle(error) }
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { handle(error) }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        guard role != .signIn || navigation === latestSignInNavigation else { return }
+        handle(error)
+    }
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        guard role != .signIn || navigation === latestSignInNavigation else { return }
+        handle(error)
+    }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        loadError = "La pagina è stata interrotta. Tocca Riprova per riaprirla."
+        if role == .sessionCheck { checkResult?(nil); return }
+        let message = "La pagina è stata interrotta. Tocca Riprova per riaprirla."
+        if role == .signIn { checkSignIn(.error(message)) }
+        else { loadError = message }
     }
     private func handle(_ error: Error) {
-        guard (error as NSError).code != NSURLErrorCancelled else { return }
+        let ns = error as NSError
+        guard !(ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled) else { return }
+        if role == .sessionCheck { checkResult?(nil); return }
+        if role == .signIn {
+            // WebKit code 102 signals a navigation superseded by a policy decision.
+            if ns.domain == "WebKitErrorDomain", ns.code == 102 { verifySignIn(); return }
+            checkSignIn(.error("Non è stato possibile confermare l’accesso a YouTube. Riprova: controlleremo prima se sei già collegato."))
+            return
+        }
         isLoading = false
         loadError = "YouTube non è raggiungibile. Controlla la connessione e riprova."
     }

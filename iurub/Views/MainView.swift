@@ -290,6 +290,7 @@ struct MainView: View {
         didStart = true
         #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--live-login-return") { showingSignIn = true }
         if arguments.contains("--playback-live"), arguments.contains("--start-video-at-8") {
             openInProgress(SavedVideo(link: VideoLink(id: "jNQXAC9IVRw", isShort: false), title: "Me at the zoo"), startAt: 8)
             return

@@ -81,8 +81,7 @@ struct WelcomeView: View {
 struct YouTubeSignInView: View {
     @StateObject private var session = BrowserSession(startPage: .watchLater, role: .signIn)
     @Environment(\.dismiss) private var dismiss
-    @State private var showingBrowser = false
-    @State private var checkingReturn = false
+    @Environment(\.scenePhase) private var scenePhase
     var completed: () -> Void
 
     var body: some View {
@@ -94,22 +93,17 @@ struct YouTubeSignInView: View {
                 }
                 .font(.caption).foregroundStyle(.secondary).padding(.vertical, 8)
                 Divider()
-                if checkingReturn && session.signedIn == false && !session.isLoading {
-                    HStack {
-                        Text("YouTube non ha ancora confermato l’accesso.")
-                        Button("Riprova") { checkingReturn = false; session.startSignIn() }
-                    }.font(.footnote).padding(10)
-                }
                 ZStack {
                     YouTubeWebView(session: session)
                     if let error = session.loadError {
                         ContentUnavailableView {
-                            Label("Accesso interrotto", systemImage: "person.crop.circle.badge.exclamationmark")
+                            Label("Accesso da verificare", systemImage: "person.crop.circle.badge.exclamationmark")
                         } description: {
                             Text(error)
                         } actions: {
-                            Button("Riprova", action: session.startSignIn).buttonStyle(.borderedProminent)
-                            Button("Usa YouTube nel browser") { showingBrowser = true }
+                            Button(session.checkingSignIn ? "Verifica in corso…" : "Riprova", action: session.retrySignIn)
+                                .buttonStyle(.borderedProminent).disabled(session.checkingSignIn)
+                                .accessibilityIdentifier("retrySignIn")
                         }.background(Theme.background)
                     } else if session.isLoading {
                         BrandLoader(label: "Caricamento accesso")
@@ -124,23 +118,27 @@ struct YouTubeSignInView: View {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button("Ricomincia", action: session.startSignIn)
-                        Button("Verifica accesso") { checkingReturn = true; session.openStartPage() }
-                        Button("Usa YouTube nel browser") { showingBrowser = true }
+                        Button("Verifica accesso", action: session.verifySignIn)
                     } label: { Image(systemName: "ellipsis.circle") }
                     .accessibilityLabel("Opzioni di accesso")
                 }
             }
         }
-        .onAppear { if !session.hasLoaded { session.startSignIn() } }
-        .onReceive(session.$signedIn) { signed in if signed == true { completed() } }
-        #if os(iOS)
-        .sheet(isPresented: $showingBrowser) {
-            VStack(spacing: 0) {
-                Text("Questa sessione resta nel browser. Puoi usarla per guardare YouTube qui.")
-                    .font(.footnote).padding()
-                SafariView(url: BrowserSession.signInURL)
+        .task {
+            if !session.hasLoaded { session.startSignIn() }
+            // Google may leave the form visible after accepting the account.
+            // Poll the shared session without navigating the form under the user.
+            var interval = 5
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(interval)) } catch { return }
+                if scenePhase == .active { session.verifySignIn() }
+                interval = min(interval * 2, 30)
             }
         }
-        #endif
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active && session.hasLoaded { session.verifySignIn() }
+        }
+        .onDisappear { session.cancelSignInCheck() }
+        .onReceive(session.$signedIn) { signed in if signed == true { completed() } }
     }
 }

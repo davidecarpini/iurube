@@ -210,7 +210,7 @@ struct PlayerView: View {
 
 private struct IdentifiedURL: Identifiable { let id = UUID(); let url: URL }
 #if os(iOS)
-struct SafariView: UIViewControllerRepresentable {
+private struct SafariView: UIViewControllerRepresentable {
     let url: URL
     func makeUIViewController(context: Context) -> SFSafariViewController { SFSafariViewController(url: url) }
     func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}

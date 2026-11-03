@@ -1,12 +1,12 @@
 # iurub
 
-Versione **1.8.0**. Client personale per iPhone, SwiftUI + WKWebView, iOS 17+. Nessun backend da configurare. I riassunti usano Gemini tramite la tua chiave OpenRouter, custodita nel Portachiavi.
+Versione **1.8.1**. Client personale per iPhone, SwiftUI + WKWebView, iOS 17+. Nessun backend da configurare. I riassunti usano Gemini tramite la tua chiave OpenRouter, custodita nel Portachiavi.
 
 ## Primo accesso
 
 Se YouTube ti riconosce, iurub apre la tua lista o il video da riprendere. Se sei ospite, tocca **Accedi a YouTube**. L’accesso avviene sulla pagina di Google e iurub apre **Salvati** quando YouTube conferma la sessione.
 
-Puoi anche scegliere **Esplora senza accedere**. Iurub ricorda la scelta e puoi collegare l’account in seguito da **Tu** o da una delle sezioni personali. Se Google rifiuta l’accesso nell’app, il menu della schermata di accesso consente di ricominciare o di usare YouTube nel browser con la sua sessione separata.
+Puoi anche scegliere **Esplora senza accedere**. Iurub ricorda la scelta e puoi collegare l’account in seguito da **Tu** o da una delle sezioni personali. Se il ritorno da Google si interrompe, iurub verifica prima se la sessione YouTube è già attiva. Anche **Riprova** controlla la sessione prima di riaprire il modulo. L’intero percorso resta nell’app.
 
 ## Navigazione
 

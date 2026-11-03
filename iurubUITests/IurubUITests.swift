@@ -938,6 +938,73 @@ final class EntryUITests: XCTestCase {
         XCTAssertFalse(signIn.exists)
     }
 
+    private func simulateInterruptedReturn(_ flag: String) {
+        app.launchArguments = ["--ui-testing", "--reset-state", "--fixture", "--guest-fixture", flag]
+        app.launch()
+        let login = app.buttons["welcomeSignIn"]
+        XCTAssertTrue(login.waitForExistence(timeout: 10))
+        login.tap()
+        let confirm = app.webViews.buttons["Conferma account di prova"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 8))
+        confirm.tap()
+    }
+
+    private func assertArrivedInSaved() {
+        XCTAssertTrue(app.buttons["closeSignIn"].waitForNonExistence(timeout: 14))
+        let row = app.webViews["youtube-watchLater"].staticTexts["Video già salvato nell’account"]
+        XCTAssertTrue(row.waitForExistence(timeout: 8))
+        XCTAssertTrue(row.isHittable)
+        XCTAssertTrue(app.tabBars.buttons["Salvati"].isSelected)
+    }
+
+    func testInterruptedReturnAfterConfirmationOpensSavedAutomatically() {
+        simulateInterruptedReturn("--interrupt-login-return")
+        assertArrivedInSaved()
+    }
+
+    func testAcceptedLoginWithoutReturnNavigationStillOpensSaved() {
+        simulateInterruptedReturn("--stalled-login-return")
+        assertArrivedInSaved()
+    }
+
+    func testRetryChecksExistingSessionWithoutAskingForCredentialsAgain() {
+        simulateInterruptedReturn("--retry-login-return")
+        let retry = app.buttons["retrySignIn"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 6))
+        XCTAssertFalse(app.buttons["Usa YouTube nel browser"].exists)
+        capture("riprova-nel-client")
+        retry.tap()
+        assertArrivedInSaved()
+    }
+
+    func testInterruptedGuestLoginRetriesInsideTheClientAndDoesNotUnlockSaved() {
+        simulateInterruptedReturn("--interrupt-before-login")
+        let retry = app.buttons["retrySignIn"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 6))
+        retry.tap()
+        let confirm = app.webViews.buttons["Conferma account di prova"]
+        XCTAssertTrue(retry.waitForNonExistence(timeout: 8))
+        XCTAssertTrue(confirm.waitForExistence(timeout: 8))
+        XCTAssertTrue(confirm.isHittable)
+        XCTAssertTrue(app.buttons["closeSignIn"].exists)
+        confirm.tap()
+        assertArrivedInSaved()
+    }
+
+    func testInterruptedReturnRecoversTheExistingRealYouTubeSession() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_ENTRY_LIVE"] == "1")
+        app.launchArguments = ["--ui-testing", "--reset-state", "--live-login-return"]
+        app.launch()
+        let interrupt = app.webViews.buttons["Conferma account di prova"]
+        XCTAssertTrue(interrupt.waitForExistence(timeout: 12))
+        interrupt.tap() // Only the redirect error is simulated; Watch Later is fetched from YouTube.
+        XCTAssertTrue(app.buttons["closeSignIn"].waitForNonExistence(timeout: 20))
+        let row = app.webViews.descendants(matching: .any).matching(identifier: "Rimuovi da Guarda più tardi").firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 25))
+        XCTAssertTrue(app.tabBars.buttons["Salvati"].isSelected)
+        XCTAssertFalse(app.buttons["welcomeSignIn"].exists)
+    }
+
     func testFreshYouTubeSessionReachesOfficialGoogleFormAndCanCancel() throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_ENTRY_LIVE"] == "1")
         app.launchArguments = ["--ui-testing", "--reset-state", "--guest-live"]
