@@ -1,3 +1,15 @@
+# iurub 1.10.0 · build 15
+
+**Riassunto dalle anteprime.** In Salvati, Esplora e Iscrizioni le scintille accanto al segnalibro aprono la chat del video senza avviarlo o cambiare la playlist. La prova ha aperto la conversazione da Salvati, fatto una domanda e ritrovato entrambe le risposte nel player dello stesso video. Un altro video ha aperto una conversazione distinta. Chiudere la chat ha lasciato selezionata la sezione di partenza.
+
+**Freccia e spazio per i titoli.** Il simulatore ha verificato sul sito mobile di YouTube l’assenza della freccia accanto al titolo nelle pagine iniziali di Guarda più tardi e Cronologia. La ricerca, il menu del sito e la navigazione di iurub sono rimasti disponibili. In una riga compatta di prova larga 390 punti, il titolo è passato da 58 a 125 punti di larghezza, mantenendo aree distinte per menu, segnalibro e Riassunto.
+
+**Verifica del 3 novembre 2026.** Superati 65 test JavaScript, 48 test Swift del progetto e quattro prove di interfaccia nel simulatore iPhone Air con iOS 27.2. Sul sito reale sono state verificate le tre anteprime, l’apertura della chat per il titolo selezionato e il ritorno alla lista. Le risposte per queste prove provenivano dal servizio di test, senza addebiti OpenRouter o modifiche alla playlist reale. Risultati locali: `build/PreviewFinal1100.xcresult`.
+
+**Disponibilità della build 15.** Il 03/11/2026, Apple ha ricevuto l’archivio alle 18:35 e TestFlight ha confermato alle 18:38 (ora italiana) che il tester interno poteva installarlo. [App Store Connect](https://appstoreconnect.apple.com/apps/6829671295/testflight/ios) · [Sorgenti fc5d046](https://github.com/davidecarpini/iurube/commit/fc5d046e7fbb26506f06813123c730cdcb0ec387).
+
+---
+
 # iurub 1.9.0 · build 14
 
 **In corso.** La × in alto a sinistra chiude il video. Sul simulatore iPhone Air il video non si è riaperto dopo un riavvio e, scegliendolo nuovamente da Salvati, è ripartito da 42 secondi. Il marchio animato rimane all’avvio; durante la navigazione si vede solo il caricamento del sito.
