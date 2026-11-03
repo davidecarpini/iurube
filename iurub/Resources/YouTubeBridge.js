@@ -90,6 +90,9 @@
       html.iurub-watch-later ytm-mobile-topbar-renderer,
       html.iurub-watch-later ytm-mobile-topbar-renderer .mobile-topbar-header { background:var(--yt-spec-base-background,var(--iurub-toolbar-background)) !important; color:var(--yt-spec-text-primary,var(--iurub-toolbar-foreground)) !important; }
       html.iurub-watch-later ytm-mobile-topbar-renderer .mobile-topbar-title { display:block !important; opacity:1 !important; visibility:visible !important; }
+      /* Only the site's back affordance on the two tab roots. Search has its own back control. */
+      html.iurub-list-root ytm-mobile-topbar-renderer .non-search-mode :is(.mobile-topbar-back-arrow, .mobile-topbar-back-arrow-button, [aria-label="Indietro" i], [aria-label="Torna indietro" i], [aria-label="Back" i], [aria-label="Go back" i]),
+      html.iurub-list-root ytm-mobile-topbar-renderer .non-search-mode > :is(button, [role="button"], a, :has(> button)):has(+ .mobile-topbar-title) { display:none !important; }
       html.iurub-watch-later ytm-mobile-topbar-renderer .mobile-topbar-title,
       html.iurub-watch-later ytm-mobile-topbar-renderer button,
       html.iurub-watch-later ytm-mobile-topbar-renderer c3-icon { color:var(--yt-spec-text-primary,var(--iurub-toolbar-foreground)) !important; }
@@ -500,6 +503,7 @@
     document.documentElement.classList.toggle('iurub-no-shorts', !shortsEnabled);
     const inWatchLater = (location.pathname === '/playlist' && new URL(location.href).searchParams.get('list') === 'WL') || document.documentElement.dataset.fixturePlaylist === 'true';
     document.documentElement.classList.toggle('iurub-watch-later', inWatchLater);
+    document.documentElement.classList.toggle('iurub-list-root', inWatchLater || /^\/feed\/history\/?$/.test(location.pathname));
     // Re-evaluate labels on recycled cards: a card once used for a Short can later hold a normal video.
     document.querySelectorAll('[data-iurub-short]').forEach(n => n.removeAttribute('data-iurub-short'));
     document.querySelectorAll('.pivot-shorts').forEach(node => {

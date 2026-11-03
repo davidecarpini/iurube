@@ -372,6 +372,21 @@ test('hides the entire YouTube bottom navigation, including after dynamic update
   } finally { dom.window.close(); }
 });
 
+test('only the root back arrow disappears on Watch Later and History, not Search or another playlist', async () => {
+  const html = '<ytm-mobile-topbar-renderer><header><div class="mobile-topbar-header-content non-search-mode"><div class="mobile-topbar-back-arrow"><button aria-label="Indietro">←</button></div><h1 class="mobile-topbar-title">Titolo</h1><button aria-label="Cerca">Cerca</button><button aria-label="Opzioni">Menu</button></div><div class="search-mode"><button aria-label="Indietro">←</button></div></header></ytm-mobile-topbar-renderer>';
+  const {dom,d,w}=await setup(html,'https://m.youtube.com/playlist?list=WL');
+  try {
+    const display = selector => w.getComputedStyle(d.querySelector(selector)).display;
+    for (const path of ['/playlist?list=WL','/feed/history','/playlist?list=PL123']) {
+      w.history.pushState({},'',path); await wait();
+      assert.equal(display('.mobile-topbar-back-arrow')==='none',!path.endsWith('PL123'));
+      for (const selector of ['.mobile-topbar-title','[aria-label="Cerca"]','[aria-label="Opzioni"]','.search-mode button']) {
+        assert.notEqual(display(selector),'none');
+      }
+    }
+  } finally { dom.window.close(); }
+});
+
 test('compact bookmark shares the real mobile metadata row with the original menu', async () => {
   const html = '<ytm-video-with-context-renderer><a href="/watch?v=jfKfPfyJRdk"><div class="thumbnail">Thumbnail</div></a><div class="media-item-details"><div class="media-channel">Avatar</div><div class="media-item-info"><div class="media-item-metadata"><a href="/watch?v=jfKfPfyJRdk"><h3>Video title</h3></a></div><ytm-bottom-sheet-renderer class="media-item-menu"><button aria-label="Menu Azione">Menu</button></ytm-bottom-sheet-renderer></div></div></ytm-video-with-context-renderer>';
   const { dom, d, w } = await setup(html, 'https://m.youtube.com/', {saveDestination:'youtube'});
