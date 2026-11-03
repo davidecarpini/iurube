@@ -98,26 +98,33 @@
       html.iurub-watch-later ytm-mobile-topbar-renderer button,
       html.iurub-watch-later ytm-mobile-topbar-renderer c3-icon { color:var(--yt-spec-text-primary,var(--iurub-toolbar-foreground)) !important; }
       @media(prefers-color-scheme:dark) { html.iurub-watch-later { --iurub-toolbar-background:#0f0f0f; --iurub-toolbar-foreground:#f1f1f1; } }
-      .iurub-save, .iurub-remove { box-sizing:border-box; display:inline-flex; flex:0 0 44px; align-items:center; justify-content:center; width:44px; height:44px; min-width:44px; min-height:44px; margin:0; padding:0; border:0; border-radius:50%; background:transparent; color:#ef3e32; cursor:pointer; position:relative; z-index:2; -webkit-tap-highlight-color:transparent; }
+      .iurub-save, .iurub-remove, .iurub-summary { box-sizing:border-box; display:inline-flex; flex:0 0 44px; align-items:center; justify-content:center; width:44px; height:44px; min-width:44px; min-height:44px; margin:0; padding:0; border:0; border-radius:50%; background:transparent; color:#ef3e32; cursor:pointer; position:relative; z-index:2; -webkit-tap-highlight-color:transparent; }
       .iurub-save::before, .iurub-remove::before { content:""; position:absolute; inset:5px; border-radius:50%; background:#ff3b3010; }
-      .iurub-save svg, .iurub-remove svg { position:relative; width:20px; height:20px; pointer-events:none; }
+      .iurub-save svg, .iurub-remove svg, .iurub-summary svg { position:relative; width:20px; height:20px; pointer-events:none; }
       .iurub-save:active::before, .iurub-remove:active::before { background:#ff3b3025; }
       .iurub-save:disabled, .iurub-remove:disabled { opacity:.45; }
-      .iurub-save:focus-visible, .iurub-remove:focus-visible { outline:3px solid #e84a38; outline-offset:-3px; }
+      .iurub-save:focus-visible, .iurub-remove:focus-visible, .iurub-summary:focus-visible { outline:3px solid #e84a38; outline-offset:-3px; }
       .iurub-save[data-saved="false"] { color:var(--yt-spec-text-primary,#272727); }
       :is(.iurub-save,.iurub-remove)[data-saved="true"] { color:#c34230; }
       :is(.iurub-save,.iurub-remove)[data-saved="true"] svg { fill:currentColor; }
       :is(.iurub-save,.iurub-remove)::before { background:transparent; }
+      .iurub-summary { color:#b72c26; }
+      .iurub-summary:active { background:#ff3b3017; }
+      @media(prefers-color-scheme:dark) { .iurub-summary { color:#ff9487; } }
       .iurub-action-label { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
       .iurub-inline-details { display:flex !important; align-items:flex-start; min-width:0; }
       .iurub-inline-details > :is(.media-item-metadata,.ytLockupMetadataViewModelTextContainer,.yt-lockup-metadata-view-model__text-container) { flex:1 1 0% !important; min-width:0; margin-inline-end:0 !important; }
       .iurub-inline-details > .iurub-native-menu { position:relative !important; inset:auto !important; margin:0 !important; flex:0 0 44px !important; width:44px !important; height:44px; display:flex !important; justify-content:center; align-items:center; }
       .iurub-inline-details > .iurub-native-menu :is(button,[role="button"]) { margin:0 !important; }
-      .iurub-inline-details > :is(.iurub-save,.iurub-remove) { align-self:flex-start; }
+      .iurub-inline-details > :is(.iurub-save,.iurub-remove,.iurub-summary) { align-self:flex-start; }
       .iurub-minimal-card:not([data-iurub-watch-recommendations]):not([data-iurub-short]) { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:start; }
-      .iurub-minimal-card > :not(.iurub-native-menu,.iurub-save,.iurub-remove) { grid-column:1; }
+      .iurub-minimal-card > :not(.iurub-native-menu,.iurub-save,.iurub-remove,.iurub-summary) { grid-column:1; }
       .iurub-minimal-card > .iurub-native-menu { grid-area:1/2; }
       .iurub-minimal-card > :is(.iurub-save,.iurub-remove) { grid-area:1/3; }
+      .iurub-minimal-card > .iurub-summary { grid-area:1/4; }
+      @media(max-width:430px) {
+        .ytLockupViewModelHorizontal:has(.iurub-summary) .ytLockupViewModelContentImage { max-width:28vw; }
+      }
       html.iurub-inline-comments body { position:static !important; overflow-y:auto !important; }
       html.iurub-inline-comments ytm-engagement-panel:has(.engagement-panel-comments-section) { position:relative !important; display:block; inset:auto !important; width:100% !important; height:auto !important; transform:none !important; }
       html.iurub-inline-comments .engagement-panel-comments-section { height:max(320px, 68dvh) !important; max-height:none !important; }
@@ -136,7 +143,7 @@
   const visible = node => Boolean(node && !node.hidden && !node.closest('[hidden],[aria-hidden="true"]') && getComputedStyle(node).display !== 'none' && getComputedStyle(node).visibility !== 'hidden' && node.getClientRects().length);
   const labelOf = node => clean(node?.getAttribute('aria-label') || node?.textContent, 500);
   // Renderer wrappers may contain the actual button; click that button, not its parent.
-  const controls = root => Array.from(root.querySelectorAll(actionSelector)).filter(n => visible(n) && !n.closest('.iurub-save,.iurub-remove') &&
+  const controls = root => Array.from(root.querySelectorAll(actionSelector)).filter(n => visible(n) && !n.closest('.iurub-save,.iurub-remove,.iurub-summary') &&
     !Array.from(n.querySelectorAll('button,[role="button"],[role="menuitem"]')).some(visible));
   const menuRoots = () => Array.from(document.querySelectorAll(menuSelector)).filter(visible);
   const playlistChoiceSelector = '[role="checkbox"], input[type="checkbox"], [role="menuitemcheckbox"], toggleable-list-item-view-model [role="menuitem"]';
@@ -221,7 +228,7 @@
     return trackNotice({video, desired, before:notificationSnapshot()});
   }
   function captureSitePlaylistAction(event) {
-    if (!accountSaving || savingToAccount || event.target.closest?.('.iurub-save,.iurub-remove')) return;
+    if (!accountSaving || savingToAccount || event.target.closest?.('.iurub-save,.iurub-remove,.iurub-summary')) return;
     const control = event.target.closest?.(actionSelector + ',' + playlistChoiceSelector);
     if (!control) return;
     const card = control.closest(CARD);
@@ -387,7 +394,7 @@
     if (link) saveThroughYouTube(card, metadata(card, anchor, link), button);
   }
   function observeAccountContext(event) {
-    if (!accountSaving || event.target.closest?.('.iurub-save,.iurub-remove')) return;
+    if (!accountSaving || event.target.closest?.('.iurub-save,.iurub-remove,.iurub-summary')) return;
     const control = event.target.closest?.('button,[role="button"],[role="menuitem"]');
     const accountAction = control && /^(switch accounts?|cambia account|cambia profilo|sign out|log out|esci|sign in|log in|accedi|use youtube signed out|usa youtube senza eseguire l.accesso)$/i.test(labelOf(control));
     let accountLink = false;
@@ -414,13 +421,15 @@
       if (await transitionEvidence(before, context.saved, true, undoEdit) === 'confirmed' && !undoEdit.reported && pendingNotice === undoEdit) publishEdit(undoEdit, context.saved);
     }, 0);
   }
-  function setBookmarkLabel(button, label) {
+  const bookmarkPath = 'M7 3h10a1 1 0 0 1 1 1v17l-6-4-6 4V4a1 1 0 0 1 1-1Z';
+  const summaryPath = 'M12 3l2.2 6.8L21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2L12 3ZM20 2v4m-2-2h4';
+  function setActionLabel(button, label, icon) {
     if (!button.querySelector('svg')) {
       // DOM construction also works with YouTube's Trusted Types policy.
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       for (const [name, value] of Object.entries({viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'1.8','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'})) svg.setAttribute(name, value);
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', 'M7 3h10a1 1 0 0 1 1 1v17l-6-4-6 4V4a1 1 0 0 1 1-1Z'); svg.append(path);
+      path.setAttribute('d', icon); svg.append(path);
       const text = document.createElement('span'); text.className = 'iurub-action-label';
       button.append(svg, text);
     }
@@ -442,10 +451,28 @@
       if (menu.nextElementSibling !== button) menu.after(button);
     } else if (button.parentElement !== row) row.append(button);
   }
+  function placePreviewSummary(card, bookmark, video, enabled) {
+    let button = card.querySelector('.iurub-summary');
+    if (!enabled || !video || (video.isShort && !shortsEnabled)) { button?.remove(); return; }
+    if (!button) {
+      button = document.createElement('button');
+      button.type = 'button'; button.className = 'iurub-summary';
+      button.addEventListener('click', event => {
+        event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
+        if (!event.isTrusted) return; // Only a user's tap can initiate a paid request.
+        // YouTube recycles cards; resolve the current link even between two scans.
+        const anchor = Array.from(card.querySelectorAll('a[href]')).find(a => parseLink(a.href));
+        const link = anchor && parseLink(anchor.href);
+        if (link && (!link.isShort || shortsEnabled)) post('openSummary', {video:metadata(card, anchor, link)});
+      });
+    }
+    setActionLabel(button, video.title ? 'Riassunto: ' + video.title : 'Riassunto del video', summaryPath);
+    if (bookmark.nextElementSibling !== button) bookmark.after(button);
+  }
   function updateButton(button, id) {
     const saved = accountSaving ? accountMembership.get(id) === true : savedIDs.has(id);
     const label = saved ? (accountSaving ? 'Rimuovi da Guarda più tardi' : '✓ Salvato in Guarda più tardi') : '+ Guarda più tardi';
-    setBookmarkLabel(button, label);
+    setActionLabel(button, label, bookmarkPath);
     button.dataset.saved = String(saved);
     button.setAttribute('aria-pressed', String(saved));
   }
@@ -505,6 +532,7 @@
     const inWatchLater = (location.pathname === '/playlist' && new URL(location.href).searchParams.get('list') === 'WL') || document.documentElement.dataset.fixturePlaylist === 'true';
     document.documentElement.classList.toggle('iurub-watch-later', inWatchLater);
     document.documentElement.classList.toggle('iurub-list-root', inWatchLater || /^\/feed\/history\/?$/.test(location.pathname));
+    const showSummaries = initial.previewSummaries && !parseLink(location.href) && (initial.startPage !== 'watchLater' || inWatchLater);
     // Re-evaluate labels on recycled cards: a card once used for a Short can later hold a normal video.
     document.querySelectorAll('[data-iurub-short]').forEach(n => n.removeAttribute('data-iurub-short'));
     document.querySelectorAll('.pivot-shorts').forEach(node => {
@@ -544,11 +572,12 @@
         removeButton.dataset.videoId = link.id;
         updateButton(removeButton, link.id);
         placeAction(card, removeButton);
+        placePreviewSummary(card, removeButton, metadata(card, anchor, link), showSummaries);
         return;
       }
       removeButton?.remove();
       let button = card.querySelector('.iurub-save');
-      if (!link) { button?.remove(); card.classList.remove('iurub-minimal-card'); return; }
+      if (!link) { button?.remove(); card.querySelector('.iurub-summary')?.remove(); card.classList.remove('iurub-minimal-card'); return; }
       if (!button) {
         button = document.createElement('button');
         button.className = 'iurub-save';
@@ -568,6 +597,7 @@
       button.__iurubVideo = metadata(card, anchor, link);
       button.dataset.videoId = link.id;
       updateButton(button, link.id);
+      placePreviewSummary(card, button, button.__iurubVideo, showSummaries);
     });
     reportCurrent();
     if (miniEnabled) setMiniPlayer(true);

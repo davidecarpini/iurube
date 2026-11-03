@@ -37,7 +37,7 @@ struct IurubApp: App {
         if testing && ProcessInfo.processInfo.arguments.contains("--reset-state") {
             try? FileManager.default.removeItem(at: conversationURL)
         }
-        if testing && ProcessInfo.processInfo.arguments.contains("--fixture") {
+        if testing && (ProcessInfo.processInfo.arguments.contains("--fixture") || ProcessInfo.processInfo.arguments.contains("--fixture-summary-service")) {
             _summaries = StateObject(wrappedValue: SummaryStore(fileURL: conversationURL,
                 service: FixtureSummaryService(failOnce: ProcessInfo.processInfo.arguments.contains("--summary-error-once")),
                 modelProvider: { preferences.summaryModel }, keyProvider: { "fixture-only-not-a-key" }))

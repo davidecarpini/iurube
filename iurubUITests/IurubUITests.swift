@@ -393,6 +393,41 @@ final class IurubUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["summaryReply"].waitForExistence(timeout: 10))
     }
 
+    func testPreviewChatUsesTheSameConversationWithoutOpeningOrSavingVideo() throws {
+        let firstTitle = "Video già salvato nell’account", otherTitle = "Musica per concentrarsi"
+        let replies = app.staticTexts.matching(identifier: "summaryReply")
+        func open(_ title: String) {
+            let preview = app.webViews.buttons["Riassunto: " + title]
+            XCTAssertTrue(preview.waitForExistence(timeout: 10))
+            preview.tap()
+            XCTAssertTrue(app.staticTexts[title].firstMatch.waitForExistence(timeout: 5))
+            XCTAssertTrue(replies.firstMatch.waitForExistence(timeout: 8))
+        }
+        open(firstTitle)
+        let input = app.descendants(matching: .any).matching(identifier: "summaryInput").firstMatch
+        input.tap(); input.typeText("Mi fai un esempio?")
+        app.buttons["sendSummaryQuestion"].tap()
+        XCTAssertTrue(replies.element(boundBy: 1).waitForExistence(timeout: 8))
+        app.buttons["closeSummary"].tap()
+        XCTAssertTrue(app.tabBars.buttons["Salvati"].isSelected)
+        XCTAssertTrue(webBookmark("Rimuovi da Guarda più tardi").exists)
+        app.tabBars.buttons["In corso"].tap()
+        XCTAssertTrue(app.staticTexts["Un video alla volta"].waitForExistence(timeout: 5))
+        for tab in ["Esplora", "Iscrizioni"] {
+            app.tabBars.buttons[tab].tap()
+            open(otherTitle)
+            XCTAssertEqual(replies.count, 1, "La chat di un altro video non deve ereditare le domande del primo")
+            app.buttons["closeSummary"].tap()
+            XCTAssertTrue(app.tabBars.buttons[tab].isSelected)
+            XCTAssertTrue(webBookmark("+ Guarda più tardi").exists)
+        }
+        app.tabBars.buttons["Salvati"].tap()
+        app.webViews.staticTexts[firstTitle].tap()
+        app.buttons["summaryButton"].tap()
+        XCTAssertTrue(replies.element(boundBy: 1).waitForExistence(timeout: 5))
+        XCTAssertEqual(replies.count, 2, "Il player deve ritrovare la chat avviata dall’anteprima")
+    }
+
     func testConfirmedSavePrefetchesSummaryBeforeOpeningChat() throws {
         app.buttons["settingsButton"].tap()
         enableAutomaticSummaries()
@@ -922,6 +957,41 @@ final class IurubLiveUITests: XCTestCase {
         XCTAssertTrue(answer.contains("elefant") || answer.contains("proboscid"), "The follow-up must discuss the actual elephants in the video")
         capture("gemini-live-follow-up", app: app)
         app.buttons["closeSummary"].tap()
+    }
+
+    func testPreviewActionsAndRootHeadersOnYouTube() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_PREVIEWS_LIVE"] == "1", "Richiede la sessione YouTube del simulatore")
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-state", "--fixture-summary-service"]
+        app.launch()
+        for tab in ["Salvati", "Cronologia", "Iscrizioni", "Esplora"] {
+            let tabButton = app.tabBars.buttons[tab]
+            XCTAssertTrue(tabButton.waitForExistence(timeout: 20))
+            if !tabButton.isSelected { tabButton.tap() }
+            if tab == "Salvati" || tab == "Cronologia" {
+                let title = tab == "Salvati" ? "Guarda più tardi" : "Cronologia"
+                XCTAssertTrue(app.webViews.staticTexts[title].firstMatch.waitForExistence(timeout: 25))
+                XCTAssertFalse(app.webViews.buttons.matching(NSPredicate(format: "label IN %@", ["Indietro","Torna indietro","Back","Go back"])).firstMatch.exists)
+            }
+            if tab != "Cronologia" {
+                let summary = app.webViews.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Riassunto: '")).firstMatch
+                XCTAssertTrue(summary.waitForExistence(timeout: 25))
+                let adjacent = app.webViews.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["Rimuovi da Guarda più tardi", "+ Guarda più tardi"])).allElementsBoundByIndex.contains { b in
+                    b.frame.width > 0 && abs(b.frame.midY - summary.frame.midY) < 5 &&
+                    summary.frame.minX >= b.frame.maxX - 1 && summary.frame.minX - b.frame.maxX < 12
+                }
+                XCTAssertTrue(adjacent, "Riassunto deve avere un'area distinta accanto al segnalibro")
+                capture("anteprime-youtube-" + tab.lowercased(), app: app)
+                let title = String(summary.label.dropFirst("Riassunto: ".count))
+                summary.tap()
+                XCTAssertTrue(app.staticTexts[title].firstMatch.waitForExistence(timeout: 8))
+                XCTAssertTrue(app.staticTexts["summaryReply"].waitForExistence(timeout: 8))
+                if tab == "Salvati" { capture("chat-da-salvati", app: app) }
+                app.buttons["closeSummary"].tap()
+                XCTAssertTrue(tabButton.isSelected)
+            } else { capture("cronologia-senza-freccia", app: app) }
+        }
     }
 
     func testExistingYouTubeWatchLater() throws {

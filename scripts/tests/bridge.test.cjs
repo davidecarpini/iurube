@@ -422,6 +422,25 @@ test('compact removal follows the original playlist menu in the same row', async
   } finally { dom.window.close(); }
 });
 
+test('preview chat follows the bookmark on recycled rows and does not submit a synthetic tap', async () => {
+  const {dom,d,w,messages}=await setup(fixture,'https://m.youtube.com/',{saveDestination:'youtube',startPage:'home',previewSummaries:true,routeVideoOpens:true});
+  try {
+    const card=d.querySelector('ytm-video-with-context-renderer'), summary=card.querySelector('.iurub-summary');
+    assert.equal(summary.previousElementSibling,card.querySelector('.iurub-save'));
+    assert.match(summary.getAttribute('aria-label'),/Musica per concentrarsi/);
+    assert.equal(w.getComputedStyle(summary).width,'44px');
+    assert.equal(d.querySelector('ytm-shorts-lockup-view-model .iurub-summary'),null);
+    summary.click();
+    assert.ok(!messages.some(m=>['openSummary','save','openVideo','youtubeSaveResult'].includes(m.type)));
+    const anchor=card.querySelector('a'); anchor.href='/watch?v=M7lc1UVf-VE';
+    anchor.querySelector('h3').textContent='Altro video'; await wait();
+    assert.equal(card.querySelectorAll('.iurub-summary').length,1);
+    assert.match(summary.getAttribute('aria-label'),/Altro video/);
+    anchor.href='/channel/no-video'; await wait();
+    assert.equal(card.querySelector('.iurub-summary'),null);
+  } finally { dom.window.close(); }
+});
+
 test('only Watch later hides its hero, while preserving rows and restoring other page headers after navigation', async () => {
   const html = '<yt-page-header-renderer><h1>Playlist hero</h1><img alt="Large thumbnail"></yt-page-header-renderer><ytm-playlist-video-renderer><a href="/watch?v=jfKfPfyJRdk"><h3>First video stays</h3></a></ytm-playlist-video-renderer>';
   const { dom, d, w } = await setup(html, 'https://m.youtube.com/playlist?list=WL', {saveDestination:'youtube'});

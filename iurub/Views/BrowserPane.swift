@@ -92,6 +92,7 @@ struct BrowserPane: View {
                 }
             }
             .onAppear {
+                session.onPreviewSummary = { video in summaryVideo = video }
                 session.onSave = { video in
                     onSave?(video)
                     feedbackID = UUID()
@@ -101,7 +102,7 @@ struct BrowserPane: View {
                     }
                 }
             }
-            .onDisappear { session.onSave = nil }
+            .onDisappear { session.onSave = nil; session.onPreviewSummary = nil }
             .onChange(of: session.windowHint) { _, value in
                 guard let hint = value else { return }
                 feedbackID = UUID()

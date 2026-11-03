@@ -70,6 +70,10 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     var onSessionStatus: ((Bool) -> Void)?
     var onSignInRequest: (() -> Void)?
     var onAccountContextChanged: (() -> Void)?
+    var onPreviewSummary: ((SavedVideo) -> Void)?
+    private var supportsPreviewSummaries: Bool {
+        role == .browse && saveDestination == .youtube && [.watchLater, .subscriptions, .home].contains(startPage)
+    }
     var onOpenVideo: ((SavedVideo, Double?) -> Void)? {
         didSet {
             installScripts()
@@ -187,7 +191,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
             "removedIDs": removedIDs,
             "saveDestination": saveDestination.rawValue, "startPage": startPage.rawValue,
             "routeVideoOpens": role == .browse && onOpenVideo != nil, "trackPlayback": role == .player,
-            "playbackSession": playbackSession]
+            "previewSummaries": supportsPreviewSummaries, "playbackSession": playbackSession]
         if let resumeTarget { config["resume"] = resumeTarget }
         let data = try! JSONSerialization.data(withJSONObject: config)
         return String(decoding: data, as: UTF8.self)
@@ -728,6 +732,13 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         }
         guard role == .browse || role == .player else { return }
         switch type {
+        case "openSummary":
+            guard supportsPreviewSummaries, let page = webView.url, page.scheme == "https",
+                  page.host == message.frameInfo.securityOrigin.host, Self.contentHosts.contains(page.host ?? ""),
+                  startPage != .watchLater || (page.path == "/playlist" && URLComponents(url: page, resolvingAgainstBaseURL: false)?.queryItems?.contains(URLQueryItem(name: "list", value: "WL")) == true),
+                  let raw = body["video"] as? [String: Any], let video = decodeVideo(raw),
+                  shortsEnabled || !video.isShort else { return }
+            onPreviewSummary?(video)
         case "requestSignIn": onSignInRequest?()
         case "openVideo":
             guard role == .browse, let raw = body["video"] as? [String: Any], let video = decodeVideo(raw),
