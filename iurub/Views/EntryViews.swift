@@ -105,8 +105,6 @@ struct YouTubeSignInView: View {
                                 .buttonStyle(.borderedProminent).disabled(session.checkingSignIn)
                                 .accessibilityIdentifier("retrySignIn")
                         }.background(Theme.background)
-                    } else if session.isLoading {
-                        BrandLoader(label: "Caricamento accesso")
                     }
                 }
             }

@@ -44,11 +44,6 @@ struct MainView: View {
                 ZStack { Theme.background; BrandLoader(label: "Apertura di iurub") }.ignoresSafeArea()
             } else {
                 appTabs
-                if sessions[selectedTab].isLoading && sessions[selectedTab].loadError == nil &&
-                    !(settings.browsesAsGuest && accountSignedIn == false && [1, 2, 3].contains(selectedTab)) {
-                    BrandLoader().frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .ignoresSafeArea().allowsHitTesting(false)
-                }
             }
         }
         .task {

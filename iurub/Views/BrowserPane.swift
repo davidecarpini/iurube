@@ -29,9 +29,6 @@ struct BrowserPane: View {
         browserContent
             .ignoresSafeArea(.container, edges: extendsToBottom && session.role != .player ? .bottom : [])
             .overlay {
-                if !extendsToBottom && session.isLoading { BrandLoader() }
-            }
-            .overlay {
                 if let error = session.loadError {
                     ContentUnavailableView {
                         Label("Impossibile caricare YouTube", systemImage: "wifi.exclamationmark")
