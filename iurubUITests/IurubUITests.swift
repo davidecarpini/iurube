@@ -413,7 +413,7 @@ final class IurubUITests: XCTestCase {
         XCTAssertTrue(webBookmark("Rimuovi da Guarda più tardi").exists)
         app.tabBars.buttons["In corso"].tap()
         XCTAssertTrue(app.staticTexts["Un video alla volta"].waitForExistence(timeout: 5))
-        for tab in ["Esplora", "Iscrizioni"] {
+        for tab in ["Cronologia", "Esplora", "Iscrizioni"] {
             app.tabBars.buttons[tab].tap()
             open(otherTitle)
             XCTAssertEqual(replies.count, 1, "La chat di un altro video non deve ereditare le domande del primo")
@@ -1033,23 +1033,21 @@ final class IurubLiveUITests: XCTestCase {
                 XCTAssertTrue(app.webViews.staticTexts[title].firstMatch.waitForExistence(timeout: 25))
                 XCTAssertFalse(app.webViews.buttons.matching(NSPredicate(format: "label IN %@", ["Indietro","Torna indietro","Back","Go back"])).firstMatch.exists)
             }
-            if tab != "Cronologia" {
-                let summary = app.webViews.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Riassunto: '")).firstMatch
-                XCTAssertTrue(summary.waitForExistence(timeout: 25))
-                let adjacent = app.webViews.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["Rimuovi da Guarda più tardi", "+ Guarda più tardi"])).allElementsBoundByIndex.contains { b in
-                    b.frame.width > 0 && abs(b.frame.midY - summary.frame.midY) < 5 &&
-                    summary.frame.minX >= b.frame.maxX - 1 && summary.frame.minX - b.frame.maxX < 12
-                }
-                XCTAssertTrue(adjacent, "Riassunto deve avere un'area distinta accanto al segnalibro")
-                capture("anteprime-youtube-" + tab.lowercased(), app: app)
-                let title = String(summary.label.dropFirst("Riassunto: ".count))
-                summary.tap()
-                XCTAssertTrue(app.staticTexts[title].firstMatch.waitForExistence(timeout: 8))
-                XCTAssertTrue(app.staticTexts["summaryReply"].waitForExistence(timeout: 8))
-                if tab == "Salvati" { capture("chat-da-salvati", app: app) }
-                app.buttons["closeSummary"].tap()
-                XCTAssertTrue(tabButton.isSelected)
-            } else { capture("cronologia-senza-freccia", app: app) }
+            let summary = app.webViews.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Riassunto: '")).firstMatch
+            XCTAssertTrue(summary.waitForExistence(timeout: 25))
+            let adjacent = app.webViews.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["Rimuovi da Guarda più tardi", "+ Guarda più tardi"])).allElementsBoundByIndex.contains { b in
+                b.frame.width > 0 && abs(b.frame.midY - summary.frame.midY) < 5 &&
+                summary.frame.minX >= b.frame.maxX - 1 && summary.frame.minX - b.frame.maxX < 12
+            }
+            XCTAssertTrue(adjacent, "Riassunto deve avere un'area distinta accanto al segnalibro")
+            capture("anteprime-youtube-" + tab.lowercased(), app: app)
+            let title = String(summary.label.dropFirst("Riassunto: ".count))
+            summary.tap()
+            XCTAssertTrue(app.staticTexts[title].firstMatch.waitForExistence(timeout: 8))
+            XCTAssertTrue(app.staticTexts["summaryReply"].waitForExistence(timeout: 8))
+            if tab == "Salvati" || tab == "Cronologia" { capture("chat-da-" + tab.lowercased(), app: app) }
+            app.buttons["closeSummary"].tap()
+            XCTAssertTrue(tabButton.isSelected)
         }
     }
 

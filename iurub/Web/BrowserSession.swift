@@ -72,7 +72,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     var onAccountContextChanged: (() -> Void)?
     var onPreviewSummary: ((SavedVideo) -> Void)?
     private var supportsPreviewSummaries: Bool {
-        role == .browse && saveDestination == .youtube && [.watchLater, .subscriptions, .home].contains(startPage)
+        role == .browse && saveDestination == .youtube && [.watchLater, .subscriptions, .history, .home].contains(startPage)
     }
     var onOpenVideo: ((SavedVideo, Double?) -> Void)? {
         didSet {
