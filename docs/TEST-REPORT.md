@@ -1,3 +1,13 @@
+# iurub 1.11.0 · build 17
+
+**Riassunto in Cronologia.** Il pulsante con le scintille accanto al segnalibro apre la chat del video selezionato. Si può richiedere un riassunto senza avviare il player o salvare il video. Chiudendo la chat si torna alla stessa tab. Le conversazioni esistenti sono condivise con le altre sezioni.
+
+**Verifica.** Sul sito mobile di YouTube nel simulatore iPhone Air con iOS 27.2, XCUITest ha verificato la posizione del pulsante accanto al segnalibro, il titolo del video nella chat, la risposta e il ritorno a Cronologia. La prova ha usato una risposta di test senza chiamate a pagamento. Superati 48 test Swift, 65 test JavaScript e due prove di interfaccia; la prova con fixture sul simulatore iPhone 18 Pro ha verificato il riutilizzo della chat senza aprire il player o cambiare il salvataggio. Le prove iniziali sull’iPhone Air hanno subito interferenze da un’altra app aperta in primo piano.
+
+**TestFlight.** Apple ha ricevuto la build alle 12:58 e TestFlight ne ha confermato la disponibilità per il tester interno alle 13:01 del 04/11/2026 (ora italiana). [App Store Connect](https://appstoreconnect.apple.com/apps/6829671295/testflight/ios) · [Sorgenti della build](https://github.com/davidecarpini/iurube/commit/ac1257a72c56b1903580015f12e32eb1b0594af0).
+
+---
+
 # iurub 1.10.1 · build 16
 
 **Chat e tastiera.** Aprire il campo per una domanda non riposiziona la conversazione. Anche quando la tastiera riduce lo spazio o la bozza va a capo, il paragrafo in lettura resta fermo. Inviare una domanda continua a portare al nuovo scambio.
