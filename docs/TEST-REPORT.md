@@ -1,3 +1,13 @@
+# iurub 1.11.1 · build 18
+
+**Altro e titolo completo.** Toccare **altro** o il titolo del video apre di nuovo il pannello originale di YouTube. I titoli lunghi si leggono per intero su più righe. L’apertura automatica dei commenti in linea non lascia più inattiva la pagina del video; le vere finestre modali mantengono il comportamento del sito.
+
+**Verifica.** Superati 48 test Swift, 66 test JavaScript e due prove XCUITest nel simulatore iPhone Air con iOS 27.2. Sul sito reale di YouTube, la prova con Big Buck Bunny ha aperto la descrizione sia da **altro** sia dal titolo, verificato il titolo completo su più righe e chiuso il pannello con il controllo originale. Sono stati verificati anche lo scorrimento dei commenti, il titolo al ritorno da Salvati e la separazione tra segnalibro e menu. Nessuna installazione sul telefono fisico e nessuna richiesta OpenRouter. Risultati locali: `build/DescriptionVerified18.xcresult` e `work/description-bridge18.log`.
+
+**TestFlight.** Apple ha ricevuto la build alle 01:25 e TestFlight ne ha confermato la disponibilità per il tester interno alle 01:27 del 05/11/2026 (ora italiana). [App Store Connect](https://appstoreconnect.apple.com/apps/6829671295/testflight/ios) · [Sorgenti della build](https://github.com/davidecarpini/iurube/commit/190604f01af36f4317d5b889dda805a13350042d).
+
+---
+
 # iurub 1.11.0 · build 17
 
 **Riassunto in Cronologia.** Il pulsante con le scintille accanto al segnalibro apre la chat del video selezionato. Si può richiedere un riassunto senza avviare il player o salvare il video. Chiudendo la chat si torna alla stessa tab. Le conversazioni esistenti sono condivise con le altre sezioni.
