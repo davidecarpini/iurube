@@ -483,6 +483,28 @@
   const watchComments = 'ytm-comments-entry-point-header-renderer,ytm-comment-section-renderer,ytm-comment-thread-renderer,ytm-comments-header-renderer,ytd-comments,ytd-comment-thread-renderer,comments-entry-point-teaser-view-model,yt-comment-teaser-carousel-item-view-model,yt-comments-entry-point-header-view-model';
   const watchProtected = watchComments + ',ytm-slim-video-metadata-section-renderer,ytm-slim-video-action-bar-renderer,ytm-slim-owner-renderer,ytm-structured-description-content-renderer,ytm-expandable-video-description-body-renderer,ytm-playlist-panel-renderer,ytd-playlist-panel-renderer,ytm-engagement-panel-section-list-renderer,ytd-engagement-panel-section-list-renderer,#movie_player,#player,ytm-player,.html5-video-player,[role="dialog"],[role="menu"]';
   let commentsVideo = null, commentsAttempts = 0, nextCommentsAttempt = 0;
+  let inlineCommentsPage = null;
+  function updateCommentsInteraction(open, panel) {
+    const host = panel?.closest('ytm-engagement-panel');
+    // YouTube makes the watch page inert for its modal comments. Once those
+    // comments are inline, the visible title and "more" must remain interactive.
+    // Real description panels, menus and dialogs keep YouTube's modal behavior.
+    const otherOverlay = Array.from(document.querySelectorAll(
+      'ytm-engagement-panel,[role="dialog"],[role="menu"],ytm-bottom-sheet-container'
+    )).some(node => visible(node) && node !== host && !host?.contains(node));
+    const inline = open && !otherOverlay;
+    if (inline) {
+      const page = document.querySelector('ytm-watch')?.closest('.page-container');
+      if (page?.hasAttribute('inert')) {
+        inlineCommentsPage = page;
+        page.removeAttribute('inert');
+      }
+    } else if (inlineCommentsPage) {
+      if (otherOverlay && inlineCommentsPage.isConnected) inlineCommentsPage.setAttribute('inert', '');
+      inlineCommentsPage = null;
+    }
+    document.documentElement.classList.toggle('iurub-inline-comments', inline);
+  }
   function showWatchComments(watchPage) {
     const id = watchPage && trackPlayback ? parseLink(location.href)?.id : null;
     if (commentsVideo !== id) {
@@ -490,7 +512,7 @@
     }
     const panel = id && document.querySelector('ytm-engagement-panel .engagement-panel-comments-section');
     const open = Boolean(panel && visible(panel));
-    document.documentElement.classList.toggle('iurub-inline-comments', open);
+    updateCommentsInteraction(open, panel);
     if (!id || miniEnabled) return;
     const teaser = document.querySelector('ytm-comments-entry-point-header-renderer,comments-entry-point-teaser-view-model,yt-comments-entry-point-header-view-model');
     const carousel = teaser?.closest('yt-video-metadata-carousel-view-model');
@@ -990,7 +1012,7 @@
     }
     scheduleScan();
   });
-  observer.observe(document, { childList:true, characterData:true, subtree:true, attributes:true, attributeFilter:['href','aria-label'] });
+  observer.observe(document, { childList:true, characterData:true, subtree:true, attributes:true, attributeFilter:['href','aria-label','inert','hidden','aria-hidden'] });
   document.addEventListener('DOMContentLoaded', checkRoute, { once:true });
   checkRoute();
 })();

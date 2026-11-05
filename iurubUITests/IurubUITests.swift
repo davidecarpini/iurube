@@ -895,6 +895,42 @@ final class IurubLiveUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 30), .completed, "Watch layout: \(layout(in: app))")
     }
 
+    func testRealVideoDescriptionOpens() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_LAYOUT_LIVE"] == "1", "Requires public YouTube")
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--playback-live", "--watch-layout-probe"]
+        app.launch()
+        app.open(try XCTUnwrap(URL(string: "iurub://open?url=https%3A%2F%2Fm.youtube.com%2Fwatch%3Fv%3Daqz-KE-bpKQ")))
+        waitForLayout(in: app) { ($0["threads"] as? Int ?? 0) >= 3 }
+        waitForLayout(in: app) { $0["titleVisible"] as? Bool == true && $0["pageInert"] as? Bool == false }
+        let page = app.webViews["youtube-player"]
+        func tapControl(_ key: String) throws {
+            let rect = try XCTUnwrap(layout(in: app)[key] as? [String: Double])
+            let x = try XCTUnwrap(rect["x"]), y = try XCTUnwrap(rect["y"])
+            let width = try XCTUnwrap(rect["width"]), height = try XCTUnwrap(rect["height"])
+            XCTAssertGreaterThan(width, 0)
+            XCTAssertGreaterThan(height, 0)
+            page.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: x + width / 2, dy: y + height / 2)).tap()
+        }
+        capture("watch-interactive-title-and-comments", app: app)
+        for control in ["moreRect", "titleRect"] {
+            try tapControl(control)
+            waitForLayout(in: app) {
+                $0["descriptionVisible"] as? Bool == true && $0["descriptionTitleVisible"] as? Bool == true &&
+                    ($0["descriptionTitleLines"] as? Int ?? 0) >= 2 && $0["pageInert"] as? Bool == true
+            }
+            capture("full-description-from-\(control)", app: app)
+            let close = try XCTUnwrap(page.buttons.matching(NSPredicate(format: "label IN %@", ["Chiudi", "Close"]))
+                .allElementsBoundByIndex.first { $0.isHittable && $0.frame.width <= 80 })
+            close.tap()
+            waitForLayout(in: app) {
+                $0["descriptionVisible"] as? Bool == false && $0["titleVisible"] as? Bool == true && $0["pageInert"] as? Bool == false
+            }
+        }
+        capture("watch-after-description-dismissed", app: app)
+    }
+
     func testRealVideoCommentsRemainAccessible() throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["IURUB_LAYOUT_LIVE"] == "1", "Requires the public YouTube watch page")
         continueAfterFailure = false

@@ -18,7 +18,7 @@ La barra inferiore ha cinque tab, in questo ordine:
 - **Cronologia**: la cronologia YouTube dell’account.
 - **Esplora**: la normale Home di YouTube, con il segnalibro a destra dei tre puntini nella riga del titolo.
 
-Quando apri un video, iurub mostra i commenti disponibili sotto il titolo. Scorri la conversazione per leggere altri commenti e aprire le risposte. Puoi chiuderla con la × e riaprirla dall’anteprima di YouTube. Tornando da Salvati a In corso ritrovi il titolo e la posizione di riproduzione.
+Quando apri un video, iurub mostra i commenti disponibili sotto il titolo. Scorri la conversazione per leggere altri commenti e aprire le risposte. Puoi chiuderla con la × e riaprirla dall’anteprima di YouTube. Tornando da Salvati a In corso ritrovi il titolo e la posizione di riproduzione. Tocca il titolo o **altro** per aprire la descrizione originale di YouTube e leggere il titolo completo, anche mentre i commenti sono aperti.
 
 La barra inferiore del sito (Home, Iscrizioni, Tu) è nascosta. La webview si estende fino al bordo inferiore, dietro la barra dell’app. In alto trovi **Indietro e Ricarica pagina** a sinistra, **Impostazioni e Tu** a destra. Tu apre la pagina personale nella sezione corrente; Indietro torna alla pagina precedente. Ricarica aggiorna la pagina che stai guardando.
 
@@ -90,7 +90,7 @@ Il comando `live` richiede una sessione YouTube già autenticata. È una verific
 
 `IURUB_PLAYBACK_LIVE` aggiunge una prova di ripresa del video pubblico “Me at the zoo”, con archivio dei progressi separato da quello normale. Il test verifica posizione e durata riportate dal media reale dopo un riavvio, poi Tu → Indietro. `IURUB_SUMMARY_LIVE` abilita le richieste reali a Gemini con la chiave configurata e consuma credito OpenRouter. Le variabili sono passate a XCTest con il prefisso `TEST_RUNNER_`, come negli esempi.
 
-`IURUB_LAYOUT_LIVE` verifica sul video pubblico di prova che il riquadro Commenti apra e chiuda ancora il pannello ufficiale. Non modifica la playlist né pubblica commenti.
+`IURUB_LAYOUT_LIVE` verifica sul sito reale lo scorrimento dei commenti, il titolo al ritorno tra tab e l’apertura della descrizione toccando sia **altro** sia un titolo lungo. Controlla anche che il titolo completo sia visibile su più righe e che la pagina torni interattiva alla chiusura della descrizione. Non modifica la playlist né pubblica commenti.
 
 Le fixture sono disponibili solo nelle build Debug con argomenti espliciti. L’avvio normale mostra il sito reale. `scripts/test-webkit.sh` conserva i controlli precedenti del bridge locale su macOS.
 

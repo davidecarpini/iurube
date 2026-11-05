@@ -1187,3 +1187,48 @@ test('saving a video as a guest requests sign-in without changing the playlist',
     assert.ok(!messages.some(m => m.type === 'youtubeSaveResult'));
   } finally { dom.window.close(); }
 });
+
+test('inline comments allow the native title and more controls, while other modals still disable the page', async () => {
+  const html = '<div class="page-container"><ytm-watch><ytm-slim-video-metadata-section-renderer><button id="title">A long video title</button><button id="more">altro</button></ytm-slim-video-metadata-section-renderer><ytm-comments-entry-point-header-renderer><button id="comments">Commenti</button></ytm-comments-entry-point-header-renderer></ytm-watch></div>';
+  let opens = 0;
+  const {dom,d,w}=await setup(html,'https://m.youtube.com/watch?v=jfKfPfyJRdk',{trackPlayback:true}, win => {
+    const doc=win.document, page=doc.querySelector('.page-container');
+    doc.querySelector('#comments').onclick=()=>{
+      opens++;
+      page.setAttribute('inert','');
+      doc.querySelector('ytm-engagement-panel')?.remove();
+      doc.body.insertAdjacentHTML('beforeend','<ytm-engagement-panel><ytm-engagement-panel-section-list-renderer class="engagement-panel-comments-section"><ytm-comment-thread-renderer>Comment</ytm-comment-thread-renderer></ytm-engagement-panel-section-list-renderer></ytm-engagement-panel>');
+    };
+    for (const id of ['title','more']) doc.getElementById(id).onclick=()=>{
+      // Native user taps can't reach an inert page (jsdom doesn't implement that).
+      if(page.hasAttribute('inert')) return;
+      page.setAttribute('inert','');
+      doc.querySelector('ytm-engagement-panel').innerHTML='<ytm-engagement-panel-section-list-renderer><ytm-structured-description-content-renderer>Full title and description</ytm-structured-description-content-renderer></ytm-engagement-panel-section-list-renderer>';
+    };
+  });
+  try {
+    const page=d.querySelector('.page-container');
+    assert.equal(opens,1);
+    assert.equal(page.hasAttribute('inert'),false);
+    assert.ok(d.documentElement.classList.contains('iurub-inline-comments'));
+    for(const id of ['more','title']) {
+      d.getElementById(id).click(); await wait();
+      assert.ok(d.querySelector('ytm-structured-description-content-renderer'));
+      assert.equal(page.hasAttribute('inert'),true);
+      assert.equal(d.documentElement.classList.contains('iurub-inline-comments'),false);
+      d.querySelector('ytm-engagement-panel').remove(); page.removeAttribute('inert');
+      await wait(1600);
+      assert.equal(d.querySelector('ytm-engagement-panel'),null,'Never reopen comments over a manually closed panel');
+      d.getElementById('comments').click(); await wait();
+      assert.equal(page.hasAttribute('inert'),false);
+    }
+    d.body.insertAdjacentHTML('beforeend','<div role="dialog">Save playlist</div>');
+    page.setAttribute('inert',''); await wait();
+    assert.equal(page.hasAttribute('inert'),true,'The playlist dialog keeps its modal background');
+    assert.equal(d.documentElement.classList.contains('iurub-inline-comments'),false);
+    d.querySelector('[role="dialog"]').remove(); page.setAttribute('inert',''); await wait();
+    assert.equal(page.hasAttribute('inert'),false,'Visible inline comments restore the original title controls');
+    w.history.pushState({},'', '/feed/history'); await wait();
+    assert.equal(d.documentElement.classList.contains('iurub-inline-comments'),false);
+  } finally { dom.window.close(); }
+});

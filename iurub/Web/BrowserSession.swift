@@ -972,8 +972,22 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
             const r = n.getBoundingClientRect();
             return r.height > 0 && r.bottom > top && r.top < innerHeight ? i : last;
           }, -1);
+          const description = Array.from(document.querySelectorAll('ytm-engagement-panel .video-description-ep-identifier'))
+            .find(n => !n.closest('[hidden],[aria-hidden="true"]') && n.getBoundingClientRect().height > 0);
+          const descriptionTitle = Array.from(description?.querySelectorAll('h2,span') || [])
+            .find(n => n.textContent.trim() === title && !n.children.length);
+          const titleRange = document.createRange();
+          if (descriptionTitle) titleRange.selectNodeContents(descriptionTitle);
+          const descriptionRect = descriptionTitle ? titleRange.getBoundingClientRect() : null;
           return JSON.stringify({titleVisible:!!(rect && video && rect.top >= video.bottom - 2 && rect.bottom <= innerHeight),
-            threads:threads.length,lastVisible:last});
+            threads:threads.length,lastVisible:last,
+            moreRect:document.querySelector('.ytVideoSubtitleViewModelShowMore')?.getBoundingClientRect().toJSON(),
+            titleRect:rect?.toJSON(),
+            descriptionVisible:!!description,
+            descriptionTitleVisible:!!(descriptionRect && descriptionRect.top >= 0 && descriptionRect.bottom <= innerHeight &&
+              descriptionRect.left >= 0 && descriptionRect.right <= innerWidth),
+            descriptionTitleLines:descriptionTitle ? titleRange.getClientRects().length : 0,
+            pageInert:!!document.querySelector('ytm-watch')?.closest('[inert]')});
         })()
         """
         return (try? await webView.evaluateJavaScript(script)) as? String ?? ""
