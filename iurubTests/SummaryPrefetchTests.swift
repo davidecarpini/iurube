@@ -58,6 +58,59 @@ struct SummaryPrefetchTests {
         try #require(await condition(), "Timed out waiting for deterministic provider state")
     }
 
+    @Test func testOnlyARecentAddAndFreshPlaylistConfirmAutomaticSummary() {
+        let id = video().id, otherID = "M7lc1UVf-VE"
+        let start = Date(timeIntervalSince1970: 1000)
+        var confirmations = SummarySaveConfirmations()
+        let accepted1 = !confirmations.confirmed(videoID: id, pageLoadedAt: start, now: start)
+        #expect(accepted1)
+        confirmations.started(videoID: id, saving: true, now: start)
+        let accepted2 = !confirmations.confirmed(videoID: otherID, pageLoadedAt: start, now: start)
+        #expect(accepted2)
+        let accepted3 = !confirmations.confirmed(videoID: id, pageLoadedAt: start.addingTimeInterval(-1), now: start)
+        #expect(accepted3)
+        let accepted4 = confirmations.confirmed(videoID: id, pageLoadedAt: start.addingTimeInterval(3), now: start.addingTimeInterval(4))
+        #expect(accepted4)
+        let accepted5 = !confirmations.confirmed(videoID: id, pageLoadedAt: start.addingTimeInterval(3), now: start.addingTimeInterval(4))
+        #expect(accepted5)
+    }
+
+    @Test func testRemovalFailureAccountChangeAndExpiryDiscardSaveConfirmation() {
+        let id = video().id, start = Date(timeIntervalSince1970: 1000)
+        var confirmations = SummarySaveConfirmations()
+        for reason in ["removed", "failed", "accountChanged", "expired"] {
+            confirmations.started(videoID: id, saving: true, now: start)
+            switch reason {
+            case "removed": confirmations.started(videoID: id, saving: false, now: start)
+            case "failed": confirmations.discard(id)
+            case "accountChanged": confirmations.reset()
+            default: break
+            }
+            let now = start.addingTimeInterval(reason == "expired" ? 301 : 4)
+            #expect(!confirmations.contains(id, now: now))
+            let accepted6 = !confirmations.confirmed(videoID: id, pageLoadedAt: now, now: now)
+            #expect(accepted6)
+        }
+    }
+
+    @Test func testPlaylistAndLateToastShareOneSummaryTask() async throws {
+        let service = PrefetchTestService(), url = temporaryURL(), item = video()
+        defer { Task { await service.cancelAll() }; try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let store = SummaryStore(fileURL: url, service: service, keyProvider: { "test-key" })
+        var confirmations = SummarySaveConfirmations()
+        let started = Date()
+        confirmations.started(videoID: item.id, saving: true, now: started)
+        if confirmations.confirmed(videoID: item.id, pageLoadedAt: started.addingTimeInterval(1)) { store.prefetch(video: item) }
+        store.prefetch(video: item) // Late toast for the same confirmed addition.
+        store.request(video: item) // Open the chat while it is still running.
+        try await waitFor { await service.calls.count == 1 }
+        await service.succeed(0)
+        try await waitFor { store.busy.isEmpty }
+        store.prefetch(video: item)
+        #expect(await service.calls.count == 1)
+        #expect(store.conversations[item.id]?.count == 1)
+    }
+
     @Test func testDeduplicatesActiveRequestsAndReusesPersistedSummary() async throws {
         let service = PrefetchTestService(), url = temporaryURL()
         defer { Task { await service.cancelAll() }; try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }

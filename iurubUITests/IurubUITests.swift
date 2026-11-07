@@ -428,6 +428,50 @@ final class IurubUITests: XCTestCase {
         XCTAssertEqual(replies.count, 2, "Il player deve ritrovare la chat avviata dall’anteprima")
     }
 
+    private func verifyAutomaticSummaryWithoutToast(usingNativeMenu: Bool) throws {
+        app.terminate()
+        app.launchArguments.append("--missing-playlist-toast")
+        app.launch()
+        app.buttons["settingsButton"].tap()
+        enableAutomaticSummaries()
+        app.buttons["closeSettings"].tap()
+        app.tabBars.buttons["Esplora"].tap()
+        let bookmark = webBookmark("+ Guarda più tardi")
+        XCTAssertTrue(bookmark.waitForExistence(timeout: 10))
+        if usingNativeMenu {
+            app.webViews.buttons["Menu Azione"].firstMatch.tap()
+            let save = app.webViews.buttons["Salva in Guarda più tardi"]
+            XCTAssertTrue(save.waitForExistence(timeout: 5))
+            save.tap()
+        } else {
+            bookmark.tap()
+            app.tabBars.buttons["Salvati"].tap()
+        }
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            let status = self.app.staticTexts["summaryPrefetchStatus"]
+            guard status.exists, let data = status.label.data(using: .utf8),
+                  let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+            return (value["ready"] as? [String] ?? []).contains("jfKfPfyJRdk")
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 15), .completed,
+                       "A fresh Watch Later confirmation must prepare the summary even without a toast")
+        app.tabBars.buttons["Salvati"].tap()
+        let preview = app.webViews.buttons["Riassunto: Musica per concentrarsi"]
+        XCTAssertTrue(preview.waitForExistence(timeout: 10))
+        preview.tap()
+        XCTAssertTrue(app.staticTexts["summaryReply"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["cancelSummary"].exists)
+        capture(usingNativeMenu ? "summary-native-save-without-toast" : "summary-from-playlist-confirmation")
+    }
+
+    func testSaveWithoutToastPrefetchesFromFreshPlaylist() throws {
+        try verifyAutomaticSummaryWithoutToast(usingNativeMenu: false)
+    }
+
+    func testNativeSaveWithoutToastPrefetchesFromFreshPlaylist() throws {
+        try verifyAutomaticSummaryWithoutToast(usingNativeMenu: true)
+    }
+
     func testConfirmedSavePrefetchesSummaryBeforeOpeningChat() throws {
         app.buttons["settingsButton"].tap()
         enableAutomaticSummaries()

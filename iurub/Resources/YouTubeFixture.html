@@ -78,7 +78,7 @@ function renderPage(page) {
         };
         toast.append(undo);
       }
-      setTimeout(() => document.body.append(toast), window.fixtureNoticeDelay || 0);
+      if (!window.fixtureNoNotice) setTimeout(() => document.body.append(toast), window.fixtureNoticeDelay || 0);
     };
     menu.append(entry); document.body.append(menu);
   };

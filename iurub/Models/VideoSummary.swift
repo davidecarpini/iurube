@@ -115,6 +115,29 @@ struct OpenRouterSummaryService: VideoSummarizing {
     }
 }
 
+/// Correlates a real add action with a subsequently loaded Watch Later page.
+/// Mere playlist browsing, stale pages and abandoned/failed actions cannot start AI work.
+struct SummarySaveConfirmations {
+    private var additions: [String: Date] = [:]
+    mutating func started(videoID: String, saving: Bool, now: Date = Date()) {
+        additions = additions.filter { now.timeIntervalSince($0.value) <= 300 }
+        guard VideoLink.validID(videoID) else { return }
+        additions[videoID] = saving ? now : nil
+    }
+    mutating func discard(_ videoID: String) { additions[videoID] = nil }
+    mutating func reset() { additions.removeAll() }
+    func contains(_ videoID: String, now: Date = Date()) -> Bool {
+        guard let start = additions[videoID] else { return false }
+        return now.timeIntervalSince(start) <= 300
+    }
+    mutating func confirmed(videoID: String, pageLoadedAt: Date, now: Date = Date()) -> Bool {
+        guard let start = additions[videoID], pageLoadedAt >= start,
+              now.timeIntervalSince(start) <= 300 else { return false }
+        additions[videoID] = nil
+        return true
+    }
+}
+
 @MainActor
 final class SummaryStore: ObservableObject {
     @Published private(set) var conversations: [String: [SummaryMessage]] = [:]

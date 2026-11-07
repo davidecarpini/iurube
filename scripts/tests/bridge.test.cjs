@@ -1232,3 +1232,47 @@ test('inline comments allow the native title and more controls, while other moda
     assert.equal(d.documentElement.classList.contains('iurub-inline-comments'),false);
   } finally { dom.window.close(); }
 });
+
+test('a real add is tracked before the site handles it, even without a confirmation toast', async () => {
+  const {dom,d,w,messages}=await setup(undefined,undefined,{saveDestination:'youtube'});
+  try {
+    w.fixtureNoNotice=true;
+    d.querySelector('.iurub-save').click();
+    await wait(2700);
+    const started=messages.filter(m=>m.type==='youtubePlaylistEditStarted');
+    assert.equal(started.length,1);
+    assert.equal(started[0].video.id,'jfKfPfyJRdk');
+    assert.equal(started[0].saved,true);
+    assert.ok(messages.findIndex(m=>m.type==='youtubePlaylistEditStarted') < messages.findIndex(m=>m.type==='fixtureAccountSave'));
+    assert.ok(messages.some(m=>m.type==='youtubeSaveResult' && m.status==='submitted'));
+    assert.ok(!messages.some(m=>m.type==='youtubeSaveResult' && m.status==='saved'),'Submitting alone is not proof');
+  } finally { dom.window.close(); }
+});
+
+test('the native menu also tracks an actual add without interpreting menu opening as a save', async () => {
+  const {dom,d,w,messages}=await setup(undefined,undefined,{saveDestination:'youtube'});
+  try {
+    w.fixtureNoNotice=true;
+    d.querySelector('button[aria-label="Menu Azione"]').click();
+    await wait();
+    assert.equal(messages.filter(m=>m.type==='youtubePlaylistEditStarted').length,0);
+    d.querySelector('[role="dialog"] button').click();
+    await wait(2700);
+    assert.equal(messages.filter(m=>m.type==='youtubePlaylistEditStarted' && m.saved).length,1);
+    assert.ok(messages.some(m=>m.type==='youtubeSaveResult' && m.status==='submitted'));
+  } finally { dom.window.close(); }
+});
+
+test('a fresh playlist card provides independent evidence even when its bookmark hint was already shared', async () => {
+  const {dom,d,w,messages}=await setup(undefined,'https://m.youtube.com/playlist?list=WL',
+    {saveDestination:'youtube',savedIDs:['jfKfPfyJRdk']},win=>{win.fixtureAccountIDs=['jfKfPfyJRdk'];win.renderPlaylist();});
+  try {
+    const evidence=messages.filter(m=>m.type==='youtubePlaylistVideo');
+    assert.equal(evidence.length,1);
+    assert.equal(evidence[0].video.id,'jfKfPfyJRdk');
+    assert.equal(evidence[0].pageStartedAt,w.performance.timeOrigin/1000);
+    d.querySelector('ytm-playlist-video-renderer').append(d.createElement('span'));await wait();
+    assert.equal(messages.filter(m=>m.type==='youtubePlaylistVideo').length,1);
+    assert.ok(!messages.some(m=>m.type==='youtubeSaveResult' || m.type==='youtubePlaylistEditStarted'),'Browsing is never an add intent');
+  } finally { dom.window.close(); }
+});

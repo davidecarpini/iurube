@@ -228,8 +228,12 @@
     }, 15000);
     return edit;
   }
-  function beginPlaylistEdit(video, desired) {
-    return trackNotice({video, desired, before:notificationSnapshot()});
+  function beginPlaylistEdit(video, desired, submitting = false) {
+    const edit = trackNotice({video, desired, before:notificationSnapshot()});
+    // Keep the intended change in native code before YouTube can dismiss the
+    // chooser or navigate. An intent alone never confirms a save.
+    if (submitting && video) post('youtubePlaylistEditStarted', {video, saved:desired});
+    return edit;
   }
   function captureSitePlaylistAction(event) {
     if (!accountSaving || savingToAccount || event.target.closest?.('.iurub-save,.iurub-remove,.iurub-summary')) return;
@@ -244,7 +248,14 @@
     // A site's own Save command can select another list. Only an explicitly
     // named Watch Later confirmation can change our bookmark or replace its toast.
     const source = video || (menuSource?.url === location.href && Date.now() < menuSource.until ? menuSource.video : currentVideo());
-    trackNotice({video:source, before:notificationSnapshot()});
+    const choice = control.closest(playlistChoiceSelector);
+    const previous = watchLaterText.test(label) ? (choice ? selectionState(choice) : directState(control)) : null;
+    if (source && typeof previous === 'boolean') {
+      const edit = beginPlaylistEdit(source, !previous, true);
+      // Run after YouTube handles the actual user tap. Its selected state or a
+      // fresh playlist can confirm the result even when no toast is emitted.
+      setTimeout(() => finishAccountChange(edit), 0);
+    } else trackNotice({video:source, before:notificationSnapshot()});
   }
   // The mobile confirmation with a thumbnail can be an ordinary unlabelled div.
   // Match newly inserted result text, never a pre-existing video title or a menu command.
@@ -334,7 +345,7 @@
       accountResult(desired ? 'alreadySaved' : 'alreadyRemoved', video, selected);
       dismissChooser(); return;
     }
-    const edit = beginPlaylistEdit(video, desired);
+    const edit = beginPlaylistEdit(video, desired, true);
     checkbox.click();
     const confirm = menuRoots().flatMap(controls).find(n => /^(done|save|fine|salva)$/i.test(labelOf(n)));
     confirm?.click();
@@ -361,7 +372,7 @@
         accountResult(desired ? 'alreadySaved' : 'alreadyRemoved', video, selected);
         dismissChooser(); return;
       }
-      const edit = beginPlaylistEdit(video, desired);
+      const edit = beginPlaylistEdit(video, desired, true);
       entry.direct.click();
       await finishAccountChange(edit);
     } else if (entry.playlist) {
@@ -584,7 +595,10 @@
       if (accountSaving && inWatchLater && link) {
         if (observedWatchLaterCards.get(card) !== link.id) {
           observedWatchLaterCards.set(card, link.id);
-          rememberMembership(metadata(card, anchor, link), true);
+          const video = metadata(card, anchor, link);
+          rememberMembership(video, true);
+          // Emit fresh card evidence independently of shared bookmark hints.
+          post('youtubePlaylistVideo', {video, pageStartedAt:performance.timeOrigin / 1000});
         }
         card.querySelector('.iurub-save')?.remove();
         if (!removeButton) {

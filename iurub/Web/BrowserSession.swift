@@ -55,6 +55,9 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     var onSave: ((SavedVideo) -> Void)?
     var onYouTubeMembership: ((SavedVideo, Bool) -> Void)?
     var onYouTubeSaved: ((SavedVideo) -> Void)?
+    var onPlaylistEditStarted: ((SavedVideo, Bool) -> Void)?
+    var onPlaylistEditAborted: ((SavedVideo) -> Void)?
+    var onPlaylistVideo: ((SavedVideo, Date) -> Void)?
     @Published private(set) var signedIn: Bool?
     @Published private(set) var checkingSignIn = false
     private enum CheckPurpose { case passive, error(String), retry }
@@ -778,6 +781,19 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
                 currentVideo = nil
             }
         case "blockedShort": notice = "Gli Shorts sono disattivati. Puoi abilitarli nelle impostazioni."
+        case "youtubePlaylistEditStarted":
+            guard saveDestination == .youtube,
+                  let raw = body["video"] as? [String: Any], let video = decodeVideo(raw),
+                  let saving = body["saved"] as? Bool else { return }
+            onPlaylistEditStarted?(video, saving)
+        case "youtubePlaylistVideo":
+            guard saveDestination == .youtube, startPage == .watchLater,
+                  let page = webView.url, page.path == "/playlist",
+                  URLComponents(url: page, resolvingAgainstBaseURL: false)?.queryItems?.contains(URLQueryItem(name: "list", value: "WL")) == true,
+                  let raw = body["video"] as? [String: Any], let video = decodeVideo(raw),
+                  let started = body["pageStartedAt"] as? Double, started.isFinite, started > 0,
+                  started <= Date().timeIntervalSince1970 else { return }
+            onPlaylistVideo?(video, Date(timeIntervalSince1970: started))
         case "youtubeMembership":
             guard saveDestination == .youtube,
                   let raw = body["video"] as? [String: Any], let video = decodeVideo(raw),
@@ -800,7 +816,8 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
             switch body["status"] as? String {
             case "submitted": onPlaylistEdit?(true)
             case "saved", "removed", "undone": onPlaylistEdit?(false)
-            case "alreadySaved", "alreadyRemoved", "failed": break  // YouTube presents the result.
+            case "alreadySaved", "alreadyRemoved", "failed":
+                if let video { onPlaylistEditAborted?(video) } // YouTube presents the result.
             case "choose": notice = "Seleziona Guarda più tardi nel menu YouTube."
             default: notice = "Apri il menu del video su YouTube e scegli Guarda più tardi. Se richiesto, accedi al tuo account."
             }
@@ -1047,7 +1064,8 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         let ids = UserDefaults(suiteName: "it.davidecarpini.iurub.uitests")!.stringArray(forKey: "fixtureAccountIDs") ?? ["M7lc1UVf-VE"]
         let data = try! JSONSerialization.data(withJSONObject: ids)
         let noticeDelay = ProcessInfo.processInfo.arguments.contains("--late-playlist-toast") ? 3200 : 0
-        html = html.replacingOccurrences(of: "/*IURUB_FIXTURE_ACCOUNT*/", with: "window.ytcfg = {get: key => key === 'LOGGED_IN' ? \(fixtureSignedIn) : undefined}; window.fixtureNoticeDelay = \(noticeDelay); window.fixtureAccountIDs = \(String(decoding: data, as: UTF8.self)); window.fixtureStartPage = '\(page.rawValue)';")
+        let missingNotice = ProcessInfo.processInfo.arguments.contains("--missing-playlist-toast")
+        html = html.replacingOccurrences(of: "/*IURUB_FIXTURE_ACCOUNT*/", with: "window.ytcfg = {get: key => key === 'LOGGED_IN' ? \(fixtureSignedIn) : undefined}; window.fixtureNoNotice = \(missingNotice); window.fixtureNoticeDelay = \(noticeDelay); window.fixtureAccountIDs = \(String(decoding: data, as: UTF8.self)); window.fixtureStartPage = '\(page.rawValue)';")
         hasLoaded = true
         webView.loadHTMLString(html, baseURL: page.url)
     }

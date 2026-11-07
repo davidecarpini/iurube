@@ -26,6 +26,7 @@ struct MainView: View {
     // Missing IDs in a partially loaded playlist do not mean "not saved".
     @State private var youtubeMembership: [String: Bool] = [:]
     @State private var accountContextNeedsRefresh = false
+    @State private var summarySaveConfirmations = SummarySaveConfirmations()
 
     private var sessions: [BrowserSession] { [player, watchLater, subscriptions, history, home] }
 
@@ -59,7 +60,7 @@ struct MainView: View {
             configureSessions(shortsEnabled: enabled)
         }
         .onReceive(settings.$automaticSummariesEnabled) { enabled in
-            if !enabled { summaries.discardQueuedPrefetches() }
+            if !enabled { summaries.discardQueuedPrefetches(); summarySaveConfirmations.reset() }
         }
         .onChange(of: youtubeMembership) { _, _ in
             configureSessions(shortsEnabled: settings.shortsEnabled)
@@ -263,7 +264,24 @@ struct MainView: View {
                 // A confirmation can arrive after the user has already returned to Salvati.
                 if session !== watchLater && (selectedTab == 1 || needsVerification) { watchLater.openStartPage() }
             }
+            session.onPlaylistEditStarted = { video, saving in
+                guard settings.automaticSummariesEnabled, !accountContextNeedsRefresh else { return }
+                summarySaveConfirmations.started(videoID: video.id, saving: saving)
+                guard saving else { return }
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(3))
+                    guard settings.automaticSummariesEnabled, summarySaveConfirmations.contains(video.id) else { return }
+                    watchLater.openStartPage()
+                }
+            }
+            session.onPlaylistEditAborted = { video in summarySaveConfirmations.discard(video.id) }
+            session.onPlaylistVideo = { video, loadedAt in
+                guard settings.automaticSummariesEnabled, !accountContextNeedsRefresh,
+                      summarySaveConfirmations.confirmed(videoID: video.id, pageLoadedAt: loadedAt) else { return }
+                summaries.prefetch(video: video)
+            }
             session.onYouTubeSaved = { video in
+                summarySaveConfirmations.discard(video.id)
                 guard settings.automaticSummariesEnabled else { return }
                 summaries.prefetch(video: video)
             }
@@ -339,6 +357,7 @@ struct MainView: View {
     }
 
     private func resetMembershipHints() {
+        summarySaveConfirmations.reset()
         youtubeMembership = [:]
         sessions.forEach { $0.resetYouTubeMembership() }
     }
