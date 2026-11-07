@@ -1,3 +1,15 @@
+# iurub 1.11.2 · build 19
+
+**Riassunto automatico dopo il salvataggio.** Se l’opzione è attiva, il salvataggio può essere confermato anche dalla nuova lettura di Guarda più tardi. Questo recupera i casi in cui YouTube non mostra il toast o la conferma arriva dopo un cambio di tab. Funziona con il segnalibro di iurub e il menu originale. La semplice apertura della playlist, una pagina già caricata, un’azione fallita o una rimozione non avviano il riassunto. Le conferme duplicate riusano la stessa richiesta.
+
+**Verifica.** Tre regressioni JavaScript fallivano con il codice della build 18; la suite aggiornata supera 69 test. Nel simulatore iPhone Air con iOS 27.2 sono passati 51 test Swift e cinque XCUITest: salvataggio con conferma normale, salvataggio senza toast tramite iurub con cambio immediato di tab, salvataggio senza toast dal menu originale, impostazione manuale predefinita ed errore con retry esplicito. La chat ha trovato il riassunto già pronto prima di aprirla. Le prove hanno usato playlist e servizio AI simulati, senza modifiche all’account YouTube reale, richieste a pagamento o installazioni sul telefono. Risultati locali: `build/PrefetchVerified19.xcresult`, `work/prefetch-bridge19.log`, `work/prefetch-baseline19.log`.
+
+**Limiti.** La correzione riguarda l’avvio dopo la conferma del salvataggio. I tempi del modello e la sospensione delle richieste da parte di iOS non sono modificati. L’opzione rimane disabilitata per impostazione predefinita.
+
+**TestFlight.** Distribuzione con il metodo **TestFlight Internal Only**. Apple ha ricevuto la build alle 14:03 e TestFlight ne ha confermato la disponibilità per il tester interno alle 14:05 del 07/11/2026 (ora italiana). [App Store Connect](https://appstoreconnect.apple.com/apps/6829671295/testflight/ios) · [Sorgenti della build](https://github.com/davidecarpini/iurube/commit/15bb7201e836b383c140a830a413e39704734493).
+
+---
+
 # iurub 1.11.1 · build 18
 
 **Altro e titolo completo.** Toccare **altro** o il titolo del video apre di nuovo il pannello originale di YouTube. I titoli lunghi si leggono per intero su più righe. L’apertura automatica dei commenti in linea non lascia più inattiva la pagina del video; le vere finestre modali mantengono il comportamento del sito.
